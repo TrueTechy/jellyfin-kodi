@@ -4,7 +4,6 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 #################################################################################################
 
 import json
-import logging
 import sys
 from datetime import datetime
 
@@ -17,16 +16,16 @@ import objects
 import connect
 import client
 import library
-import setup
 import monitor
 from views import Views, verify_kodi_defaults
-from helper import translate, window, settings, event, dialog
+from helper import translate, window, settings, event, dialog, set_addon_mode
 from helper.utils import JsonDebugPrinter
 from jellyfin import Jellyfin
+from helper import LazyLogger
 
 #################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 
 #################################################################################################
 
@@ -52,7 +51,6 @@ class Service(xbmc.Monitor):
         self.settings['enable_context'] = settings('enableContext.bool')
         self.settings['enable_context_transcode'] = settings('enableContextTranscode.bool')
         self.settings['kodi_companion'] = settings('kodiCompanion.bool')
-        window('jellyfin_logLevel', value=str(self.settings['log_level']))
         window('jellyfin_kodiProfile', value=self.settings['profile'])
         settings('platformDetected', client.get_platform())
 
@@ -70,11 +68,6 @@ class Service(xbmc.Monitor):
         LOG.info("Log Level: %s", self.settings['log_level'])
 
         verify_kodi_defaults()
-
-        try:
-            Views().get_nodes()
-        except Exception as error:
-            LOG.exception(error)
 
         window('jellyfin.connected.bool', True)
         settings('groupedSets.bool', objects.utils.get_grouped_set())
@@ -133,7 +126,8 @@ class Service(xbmc.Monitor):
 
         try:
             self.connect.register()
-            setup.Setup()
+            if not settings('SyncInstallRunDone.bool'):
+                set_addon_mode()
         except Exception as error:
             LOG.exception(error)
 
@@ -161,8 +155,8 @@ class Service(xbmc.Monitor):
             if method not in ('ServerUnreachable', 'ServerShuttingDown', 'UserDataChanged', 'ServerConnect',
                               'LibraryChanged', 'ServerOnline', 'SyncLibrary', 'RepairLibrary', 'RemoveLibrary',
                               'SyncLibrarySelection', 'RepairLibrarySelection', 'AddServer',
-                              'Unauthorized', 'UpdateServer', 'UserConfigurationUpdated', 'ServerRestarting',
-                              'RemoveServer', 'AddLibrarySelection', 'RemoveLibrarySelection'):
+                              'Unauthorized', 'UserConfigurationUpdated', 'ServerRestarting',
+                              'RemoveServer', 'UpdatePassword', 'AddLibrarySelection', 'RemoveLibrarySelection'):
                 return
 
             data = json.loads(data)[0]
@@ -249,11 +243,8 @@ class Service(xbmc.Monitor):
             self.connect.remove_server(data['Id'])
             xbmc.executebuiltin("Container.Refresh")
 
-        elif method == 'UpdateServer':
-
-            dialog("ok", heading="{jellyfin}", line1=translate(33151))
-            self.connect.setup_manual_server()
-
+        elif method == 'UpdatePassword':
+            self.connect.setup_login_manual()
         elif method == 'UserDataChanged' and self.library_thread:
             if data.get('ServerId') or not window('jellyfin_startup.bool'):
                 return
@@ -361,7 +352,6 @@ class Service(xbmc.Monitor):
         if settings('logLevel') != self.settings['log_level']:
 
             log_level = settings('logLevel')
-            window('jellyfin_logLevel', str(log_level))
             self.settings['logLevel'] = log_level
             LOG.info("New log level: %s", log_level)
 
@@ -385,13 +375,13 @@ class Service(xbmc.Monitor):
             if not self.settings.get('mode_warn'):
 
                 self.settings['mode_warn'] = True
-                dialog("yesno", heading="{jellyfin}", line1=translate(33118))
+                dialog("yesno", "{jellyfin}", translate(33118))
 
         if settings('kodiCompanion.bool') != self.settings['kodi_companion']:
             self.settings['kodi_companion'] = settings('kodiCompanion.bool')
 
             if not self.settings['kodi_companion']:
-                dialog("ok", heading="{jellyfin}", line1=translate(33138))
+                dialog("ok", "{jellyfin}", translate(33138))
 
     def reload_objects(self):
 

@@ -3,17 +3,17 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 ##################################################################################################
 
-import logging
 import os
 
 from kodi_six import xbmcgui, xbmcaddon
 from six import ensure_text
 
 from helper import window, addon_id
+from helper import LazyLogger
 
 ##################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 ACTION_PARENT_DIR = 9
 ACTION_PREVIOUS_MENU = 10
 ACTION_BACK = 92
@@ -34,8 +34,11 @@ class ContextMenu(xbmcgui.WindowXMLDialog):
 
         xbmcgui.WindowXMLDialog.__init__(self, *args, **kwargs)
 
-    def set_options(self, options=[]):
-        self._options = options
+    def set_options(self, options=None):
+        if options is None:
+            self._options = []
+        else:
+            self._options = options
 
     def is_selected(self):
         return True if self.selected_option else False

@@ -136,7 +136,11 @@ def getdefaulttimeout():
 
 
 def _wrap_sni_socket(sock, sslopt, hostname):
-    context = ssl.SSLContext(sslopt.get('ssl_version', ssl.PROTOCOL_SSLv23))
+    context = ssl.SSLContext(sslopt.get('ssl_version', ssl.PROTOCOL_TLS))
+    context.options |= ssl.OP_NO_SSLv2  # Explicitly disable SSLv2
+    context.options |= ssl.OP_NO_SSLv3  # Explicitly disable SSLv3
+    context.options |= ssl.OP_NO_TLSv1  # Explicitly disable TLSv1.0
+    context.options |= ssl.OP_NO_TLSv1_1  # Explicitly disable TLSv1.1
 
     if sslopt.get('cert_reqs', ssl.CERT_NONE) != ssl.CERT_NONE:
         capath = ssl.get_default_verify_paths().capath
@@ -369,7 +373,7 @@ class WebSocket(object):
       The WebSocket protocol draft-hixie-thewebsocketprotocol-76
       http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol-76
 
-    We can connect to the websocket server and send/recieve data.
+    We can connect to the websocket server and send/receive data.
     The following example is a echo client.
 
     >>> import websocket
@@ -547,7 +551,7 @@ class WebSocket(object):
 
         # https://tools.ietf.org/html/rfc6455#page-6
         magic_string = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11".encode()
-        value = key +  magic_string
+        value = key + magic_string
         hashed = base64.encodestring(hashlib.sha1(value).digest()).strip().lower().decode()
         return hashed == result
 
@@ -631,7 +635,7 @@ class WebSocket(object):
 
     def recv_data(self):
         """
-        Recieve data with operation code.
+        Receive data with operation code.
 
         return  value: tuple of operation code and string(byte array) value.
         """
@@ -661,7 +665,7 @@ class WebSocket(object):
 
     def recv_frame(self):
         """
-        recieve data as frame from server.
+        receive data as frame from server.
 
         return value: ABNF frame object.
         """
@@ -723,7 +727,7 @@ class WebSocket(object):
 
         try:
             self.sock.shutdown(socket.SHUT_RDWR)
-        except:  # noqa: E722
+        except Exception:
             pass
 
         '''
@@ -809,7 +813,7 @@ class WebSocketApp(object):
     Higher level of APIs are provided.
     The interface is like JavaScript WebSocket object.
     """
-    def __init__(self, url, header=[],
+    def __init__(self, url, header=None,
                  on_open=None, on_message=None, on_error=None,
                  on_close=None, keep_running=True, get_mask_key=None):
         """
@@ -817,7 +821,7 @@ class WebSocketApp(object):
         header: custom header for websocket handshake.
         on_open: callable object which is called at opening websocket.
           this function has one argument. The arugment is this class object.
-        on_message: callbale object which is called when recieved data.
+        on_message: callbale object which is called when received data.
          on_message has 2 arguments.
          The 1st arugment is this class object.
          The passing 2nd arugment is utf-8 string which we get from the server.
@@ -833,7 +837,10 @@ class WebSocketApp(object):
          docstring for more information
         """
         self.url = url
-        self.header = header
+        if header is None:
+            self.header = []
+        else:
+            self.header = header
         self.on_open = on_open
         self.on_message = on_message
         self.on_error = on_error

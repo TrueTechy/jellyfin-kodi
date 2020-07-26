@@ -3,8 +3,6 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 ##################################################################################################
 
-import logging
-
 from kodi_six import xbmc, xbmcaddon
 
 import client
@@ -14,10 +12,11 @@ from helper import settings, addon_id, event, api, window
 from jellyfin import Jellyfin
 from jellyfin.connection_manager import CONNECTION_STATE
 from jellyfin.exceptions import HTTPException
+from helper import LazyLogger
 
 ##################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 XML_PATH = (xbmcaddon.Addon(addon_id()).getAddonInfo('path'), "default", "1080i")
 
 ##################################################################################################
@@ -120,6 +119,10 @@ class Connect(object):
                 if 'ExchangeToken' not in state['Servers'][0]:
                     self.login()
 
+            elif state['State'] == CONNECTION_STATE['Unavailable'] and state['Status_Code'] == 401:
+                # If the saved credentials don't work, restart the addon to force the password dialog to open
+                window('jellyfin.restart', clear=True)
+
             elif state['State'] == CONNECTION_STATE['Unavailable']:
                 raise HTTPException('ServerUnreachable', {})
 
@@ -156,12 +159,13 @@ class Connect(object):
         user = {}
 
         dialog = ServerConnect("script-jellyfin-connect-server.xml", *XML_PATH)
-        dialog.set_args(**{
-            'connect_manager': self.connect_manager,
-            'username': user.get('DisplayName', ""),
-            'user_image': user.get('ImageUrl'),
-            'servers': state.get('Servers', [])
-        })
+        dialog.set_args(
+            connect_manager=self.connect_manager,
+            username=user.get('DisplayName', ""),
+            user_image=user.get('ImageUrl'),
+            servers=self.connect_manager.get_available_servers()
+        )
+
         dialog.doModal()
 
         if dialog.is_server_selected():
@@ -254,8 +258,9 @@ class Connect(object):
         client.set_credentials(get_credentials())
         manager = client.auth
 
+        username = settings('username')
         try:
-            self.login_manual(manager=manager)
+            self.login_manual(user=username, manager=manager)
         except RuntimeError:
             return
 

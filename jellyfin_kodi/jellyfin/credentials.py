@@ -3,13 +3,14 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 #################################################################################################
 
-import logging
 import time
 from datetime import datetime
 
+from helper import LazyLogger
+
 #################################################################################################
 
-LOG = logging.getLogger('JELLYFIN.' + __name__)
+LOG = LazyLogger(__name__)
 
 #################################################################################################
 
@@ -75,7 +76,7 @@ class Credentials(object):
             raise KeyError("Server['Id'] cannot be null or empty")
 
         # Add default DateLastAccessed if doesn't exist.
-        server.setdefault('DateLastAccessed', "2001-01-01T00:00:00Z")
+        server.setdefault('DateLastAccessed', "1970-01-01T00:00:00Z")
 
         for existing in servers:
             if existing['Id'] == server['Id']:

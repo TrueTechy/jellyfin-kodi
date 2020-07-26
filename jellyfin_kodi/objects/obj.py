@@ -4,14 +4,15 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 ##################################################################################################
 
 import json
-import logging
 import os
 
-from six import iteritems
+from six import iteritems, ensure_text
+
+from helper import LazyLogger, get_filesystem_encoding
 
 ##################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 
 ##################################################################################################
 
@@ -32,7 +33,9 @@ class Objects(object):
 
         ''' Load objects mapping.
         '''
-        with open(os.path.join(os.path.dirname(__file__), 'obj_map.json')) as infile:
+        file_dir = os.path.dirname(ensure_text(__file__, get_filesystem_encoding()))
+
+        with open(os.path.join(file_dir, 'obj_map.json')) as infile:
             self.objects = json.load(infile)
 
     def map(self, item, mapping_name):
@@ -85,9 +88,7 @@ class Objects(object):
 
                     for d in self.__recursiveloop__(obj, obj_param):
 
-                        if obj_filters and self.__filters__(d, obj_filters):
-                            result.append(d)
-                        elif not obj_filters:
+                        if not obj_filters or self.__filters__(d, obj_filters):
                             result.append(d)
 
                     obj = result

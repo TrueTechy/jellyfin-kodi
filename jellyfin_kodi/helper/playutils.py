@@ -3,7 +3,6 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 #################################################################################################
 
-import logging
 import os
 from uuid import uuid4
 import collections
@@ -13,12 +12,13 @@ from kodi_six import xbmc, xbmcvfs
 import client
 import requests
 from downloader import TheVoid
+from helper import LazyLogger
 
 from . import translate, settings, window, dialog, api
 
 #################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 
 #################################################################################################
 
@@ -152,7 +152,7 @@ class PlayUtils(object):
 
     def is_file_exists(self, source):
 
-        path = self.direct_play(source)
+        self.direct_play(source)
 
         if xbmcvfs.exists(self.info['Path']):
             LOG.info("Path exists.")

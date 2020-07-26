@@ -1,11 +1,16 @@
 # -*- coding: utf-8 -*-
 from __future__ import division, absolute_import, print_function, unicode_literals
-import requests
-import json
-import logging
-from helper.utils import settings
 
-LOG = logging.getLogger('JELLYFIN.' + __name__)
+import json
+
+import requests
+
+from helper.utils import settings
+from helper import LazyLogger
+from six import ensure_str
+
+
+LOG = LazyLogger(__name__)
 
 
 def jellyfin_url(client, handler):
@@ -44,7 +49,10 @@ class API(object):
         self.config = client.config
         self.default_timeout = 5
 
-    def _http(self, action, url, request={}):
+    def _http(self, action, url, request=None):
+        if request is None:
+            request = {}
+
         request.update({'type': action, 'handler': url})
 
         return self.client.request(request)
@@ -321,7 +329,7 @@ class API(object):
     def get_sync_queue(self, date, filters=None):
         return self._get("Jellyfin.Plugin.KodiSyncQueue/{UserId}/GetItems", params={
             'LastUpdateDT': date,
-            'filter': filters or None
+            'filter': filters or 'None'
         })
 
     def get_server_time(self):
@@ -367,7 +375,7 @@ class API(object):
             "Accept-Charset": "UTF-8,*",
             "Accept-encoding": "gzip",
             "User-Agent": self.config.data['http.user_agent'] or "%s/%s" % (self.config.data['app.name'], self.config.data['app.version']),
-            "x-emby-authorization": auth
+            "x-emby-authorization": ensure_str(auth, 'utf-8')
         }
 
     def send_request(self, url, path, method="get", timeout=None, headers=None, data=None):
@@ -388,10 +396,9 @@ class API(object):
 
         return request_method(url, **request_settings)
 
-
     def login(self, server_url, username, password=""):
         path = "Users/AuthenticateByName"
-        authData = {
+        auth_data = {
                     "username": username,
                     "Pw": password
                 }
@@ -401,7 +408,7 @@ class API(object):
 
         try:
             LOG.info("Trying to login to %s/%s as %s" % (server_url, path, username))
-            response = self.send_request(server_url, path, method="post", headers=headers, data=json.dumps(authData))
+            response = self.send_request(server_url, path, method="post", headers=headers, data=json.dumps(auth_data))
 
             if response.status_code == 200:
                 return response.json()
@@ -411,26 +418,33 @@ class API(object):
                 LOG.debug(headers)
 
                 return {}
-        except Exception as e: # Find exceptions for likely cases i.e, server timeout, etc
+        except Exception as e:  # Find exceptions for likely cases i.e, server timeout, etc
             LOG.error(e)
 
         return {}
 
     def validate_authentication_token(self, server):
-
-        url = "%s/%s" % (server['address'], "system/info")
-        authTokenHeader = {
+        auth_token_header = {
                     'X-MediaBrowser-Token': server['AccessToken']
                 }
         headers = self.get_default_headers()
-        headers.update(authTokenHeader)
+        headers.update(auth_token_header)
 
         response = self.send_request(server['address'], "system/info", headers=headers)
-        return response.json() if response.status_code == 200 else {}
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return { 'Status_Code': response.status_code }
 
     def get_public_info(self, server_address):
         response = self.send_request(server_address, "system/info/public")
-        return response.json() if response.status_code == 200 else {}
+        try:
+            return response.json() if response.status_code == 200 else {}
+        except json.JSONDecodeError as e:
+            LOG.error("Failed to get server public info. JSON error: %s" % e)
+            LOG.error(response.content)
+            return {}
 
     def check_redirect(self, server_address):
         ''' Checks if the server is redirecting traffic to a new URL and
@@ -439,4 +453,3 @@ class API(object):
         response = self.send_request(server_address, "system/info/public")
         url = response.url.replace('/system/info/public', '')
         return url
-

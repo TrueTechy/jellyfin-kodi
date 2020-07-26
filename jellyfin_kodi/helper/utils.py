@@ -5,8 +5,8 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 import binascii
 import json
-import logging
 import os
+import sys
 import re
 import unicodedata
 from uuid import uuid4
@@ -18,11 +18,12 @@ from six.moves.urllib.parse import quote_plus
 
 from kodi_six import xbmc, xbmcaddon, xbmcgui, xbmcvfs
 
+from . import LazyLogger
 from .translate import translate
 
 #################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 
 #################################################################################################
 
@@ -32,7 +33,7 @@ def addon_id():
 
 
 def kodi_version():
-    return xbmc.getInfoLabel('System.BuildVersion')[:2]
+    return int(xbmc.getInfoLabel('System.BuildVersion').split('.')[0])
 
 
 def window(key, value=None, clear=False, window_id=10000):
@@ -155,6 +156,10 @@ def dialog(dialog_type, *args, **kwargs):
     if "heading" in kwargs:
         kwargs['heading'] = kwargs['heading'].replace("{jellyfin}", translate('addon_name'))
 
+    if args:
+        args = list(args)
+        args[0] = args[0].replace("{jellyfin}", translate('addon_name'))
+
     types = {
         'yesno': d.yesno,
         'ok': d.ok,
@@ -244,14 +249,42 @@ def validate(path):
     if window('jellyfin_pathverified.bool'):
         return True
 
-    path = path if os.path.supports_unicode_filenames else path
-
     if not xbmcvfs.exists(path):
         LOG.info("Could not find %s", path)
 
-        if dialog("yesno", heading="{jellyfin}", line1="%s %s. %s" % (translate(33047), path, translate(33048))):
+        if dialog("yesno", "{jellyfin}", "%s %s. %s" % (translate(33047), path, translate(33048))):
 
             return False
+
+    window('jellyfin_pathverified.bool', True)
+
+    return True
+
+
+def validate_bluray_dir(path):
+
+    ''' Verify if path/BDMV/ is accessible.
+    '''
+
+    path = path + '/BDMV/'
+
+    if not xbmcvfs.exists(path):
+        return False
+
+    window('jellyfin_pathverified.bool', True)
+
+    return True
+
+
+def validate_dvd_dir(path):
+
+    ''' Verify if path/VIDEO_TS/ is accessible.
+    '''
+
+    path = path + '/VIDEO_TS/'
+
+    if not xbmcvfs.exists(path):
+        return False
 
     window('jellyfin_pathverified.bool', True)
 
@@ -461,6 +494,24 @@ def has_attribute(obj, name):
         return False
 
 
+def set_addon_mode():
+
+    ''' Setup playback mode. If native mode selected, check network credentials.
+    '''
+    value = dialog("yesno",
+                   translate('playback_mode'),
+                   translate(33035),
+                   nolabel=translate('addon_mode'),
+                   yeslabel=translate('native_mode'))
+
+    settings('useDirectPaths', value="1" if value else "0")
+
+    if value:
+        dialog("ok", "{jellyfin}", translate(33145))
+
+    LOG.info("Add-on playback: %s", settings('useDirectPaths') == "0")
+
+
 class JsonDebugPrinter(object):
 
     ''' Helper class to defer converting data to JSON until it is needed.
@@ -472,3 +523,15 @@ class JsonDebugPrinter(object):
 
     def __str__(self):
         return json.dumps(self.data, indent=4)
+
+
+def get_filesystem_encoding():
+    enc = sys.getfilesystemencoding()
+
+    if not enc:
+        enc = sys.getdefaultencoding()
+
+    if not enc or enc == 'ascii':
+        enc = 'utf-8'
+
+    return enc

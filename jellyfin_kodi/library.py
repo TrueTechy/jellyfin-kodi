@@ -3,7 +3,6 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 ##################################################################################################
 
-import logging
 import threading
 from datetime import datetime, timedelta
 
@@ -19,10 +18,11 @@ from downloader import GetItemWorker
 from helper import translate, api, stop, settings, window, dialog, event, LibraryException
 from helper.utils import split_list, set_screensaver, get_screensaver
 from jellyfin import Jellyfin
+from helper import LazyLogger
 
 ##################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 LIMIT = int(settings('limitIndex') or 15)
 DTHREADS = int(settings('limitThreads') or 3)
 
@@ -90,7 +90,7 @@ class Library(threading.Thread):
 
             try:
                 self.service()
-            except LibraryException as error:
+            except LibraryException:
                 break
             except Exception as error:
                 LOG.exception(error)
@@ -332,7 +332,7 @@ class Library(threading.Thread):
                     if self.server.jellyfin.check_companion_installed():
 
                         if not self.fast_sync():
-                            dialog("ok", heading="{jellyfin}", line1=translate(33128))
+                            dialog("ok", "{jellyfin}", translate(33128))
 
                             raise Exception("Failed to retrieve latest updates")
 
@@ -347,7 +347,7 @@ class Library(threading.Thread):
 
             if error.status in 'SyncLibraryLater':
 
-                dialog("ok", heading="{jellyfin}", line1=translate(33129))
+                dialog("ok", "{jellyfin}", translate(33129))
                 settings('SyncInstallRunDone.bool', True)
                 sync = get_sync()
                 sync['Libraries'] = []
@@ -357,7 +357,7 @@ class Library(threading.Thread):
 
             elif error.status == 'CompanionMissing':
 
-                dialog("ok", heading="{jellyfin}", line1=translate(33099))
+                dialog("ok", "{jellyfin}", translate(33099))
                 settings('kodiCompanion.bool', False)
 
                 return True
@@ -372,21 +372,41 @@ class Library(threading.Thread):
         ''' Movie and userdata not provided by server yet.
         '''
         last_sync = settings('LastIncrementalSync')
+        include = []
         filters = ["tvshows", "boxsets", "musicvideos", "music", "movies"]
         sync = get_sync()
+        whitelist = [ x.replace('Mixed:', "") for x in sync['Whitelist'] ]
         LOG.info("--[ retrieve changes ] %s", last_sync)
 
+        # Get the item type of each synced library and build list of types to request
+        for item_id in whitelist:
+            library = self.server.jellyfin.get_item(item_id)
+            library_type = library.get('CollectionType')
+            if library_type in filters:
+                include.append(library_type)
+
+        # Include boxsets if movies are synced
+        if 'movies' in include:
+            include.append('boxsets')
+
+        # Filter down to the list of library types we want to exclude
+        query_filter = list(set(filters) - set(include))
+
         try:
+            # Get list of updates from server for synced library types and populate work queues
+            result = self.server.jellyfin.get_sync_queue(last_sync, ",".join([ x for x in query_filter ]))
+            
+            if result is None:
+                return True
+            
             updated = []
             userdata = []
             removed = []
-
-            for media in filters:
-                result = self.server.jellyfin.get_sync_queue(last_sync, ",".join([x for x in filters if x != media]))
-                updated.extend(result['ItemsAdded'])
-                updated.extend(result['ItemsUpdated'])
-                userdata.extend(result['UserDataChanged'])
-                removed.extend(result['ItemsRemoved'])
+            
+            updated.extend(result['ItemsAdded'])
+            updated.extend(result['ItemsUpdated'])
+            userdata.extend(result['UserDataChanged'])
+            removed.extend(result['ItemsRemoved'])
 
             total = len(updated) + len(userdata)
 
@@ -394,7 +414,7 @@ class Library(threading.Thread):
 
                 ''' Inverse yes no, in case the dialog is forced closed by Kodi.
                 '''
-                if dialog("yesno", heading="{jellyfin}", line1=translate(33172).replace('{number}', str(total)), nolabel=translate(107), yeslabel=translate(106)):
+                if dialog("yesno", "{jellyfin}", translate(33172).replace('{number}', str(total)), nolabel=translate(107), yeslabel=translate(106)):
                     LOG.warning("Large updates skipped.")
 
                     return True
@@ -402,22 +422,6 @@ class Library(threading.Thread):
             self.updated(updated)
             self.userdata(userdata)
             self.removed(removed)
-
-            """
-            result = self.server.jellyfin.get_sync_queue(last_sync)
-            self.userdata(result['UserDataChanged'])
-            self.removed(result['ItemsRemoved'])
-
-
-            filters.extend(["tvshows", "boxsets", "musicvideos", "music"])
-
-            # Get only movies.
-            result = self.server.jellyfin.get_sync_queue(last_sync, ",".join(filters))
-            self.updated(result['ItemsAdded'])
-            self.updated(result['ItemsUpdated'])
-            self.userdata(result['UserDataChanged'])
-            self.removed(result['ItemsRemoved'])
-            """
 
         except Exception as error:
             LOG.exception(error)
@@ -662,20 +666,19 @@ class UserDataWorker(threading.Thread):
                 except Queue.Empty:
                     break
 
-
                 try:
                     if item['Type'] == 'Movie':
-                        obj = Movies(self.args[0], jellyfindb, kodidb, self.args[1]).userdata(item)
+                        Movies(self.args[0], jellyfindb, kodidb, self.args[1]).userdata(item)
                     elif item['Type'] in ['Series', 'Season', 'Episode']:
-                        obj = TVShows(self.args[0], jellyfindb, kodidb, self.args[1]).userdata(item)
+                        TVShows(self.args[0], jellyfindb, kodidb, self.args[1]).userdata(item)
                     elif item['Type'] == 'MusicAlbum':
-                        obj = Music(self.args[0], jellyfindb, kodidb, self.args[1]).album(item)
+                        Music(self.args[0], jellyfindb, kodidb, self.args[1]).album(item)
                     elif item['Type'] == 'MusicArtist':
-                        obj = Music(self.args[0], jellyfindb, kodidb, self.args[1]).artist(item)
+                        Music(self.args[0], jellyfindb, kodidb, self.args[1]).artist(item)
                     elif item['Type'] == 'AlbumArtist':
-                        obj = Music(self.args[0], jellyfindb, kodidb, self.args[1]).albumartist(item)
+                        Music(self.args[0], jellyfindb, kodidb, self.args[1]).albumartist(item)
                     elif item['Type'] == 'Audio':
-                        obj = Music(self.args[0], jellyfindb, kodidb, self.args[1]).song(item)
+                        Music(self.args[0], jellyfindb, kodidb, self.args[1]).song(item)
                 except LibraryException as error:
                     if error.status == 'StopCalled':
                         break
@@ -716,17 +719,18 @@ class SortWorker(threading.Thread):
 
                 try:
                     media = database.get_media_by_id(item_id)
-                    self.output[media].put({'Id': item_id, 'Type': media})
+                    if media:
+                        self.output[media].put({'Id': item_id, 'Type': media})
+                    else:
+                        items = database.get_media_by_parent_id(item_id)
+
+                        if not items:
+                            LOG.info("Could not find media %s in the jellyfin database.", item_id)
+                        else:
+                            for item in items:
+                                self.output[item[1]].put({'Id': item[0], 'Type': item[1]})
                 except Exception as error:
                     LOG.exception(error)
-
-                    items = database.get_media_by_parent_id(item_id)
-
-                    if not items:
-                        LOG.info("Could not find media %s in the jellyfin database.", item_id)
-                    else:
-                        for item in items:
-                            self.output[item[1]].put({'Id': item[0], 'Type': item[1]})
 
                 self.queue.task_done()
 

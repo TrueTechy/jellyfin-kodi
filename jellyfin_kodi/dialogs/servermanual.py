@@ -3,19 +3,18 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 ##################################################################################################
 
-import logging
-import os
 import re
 
 from six import iteritems
-from kodi_six import xbmcgui, xbmcaddon
+from kodi_six import xbmcgui
 
-from helper import translate, addon_id
+from helper import translate
 from jellyfin.connection_manager import CONNECTION_STATE
+from helper import LazyLogger
 
 ##################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 ACTION_PARENT_DIR = 9
 ACTION_PREVIOUS_MENU = 10
 ACTION_BACK = 92
@@ -98,7 +97,6 @@ class ServerManual(xbmcgui.WindowXMLDialog):
 
     def _add_editcontrol(self, x, y, height, width):
 
-        media = os.path.join(xbmcaddon.Addon(addon_id()).getAddonInfo('path'), 'resources', 'skins', 'default', 'media')
         control = xbmcgui.ControlEdit(0, 0, 0, 0,
                                       label="User",
                                       font="font13",

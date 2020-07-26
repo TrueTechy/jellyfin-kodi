@@ -3,7 +3,6 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 #################################################################################################
 
-import logging
 import os
 
 from kodi_six import xbmc, xbmcvfs
@@ -11,10 +10,11 @@ from kodi_six import xbmc, xbmcvfs
 from objects.obj import Objects
 from helper import translate, api, window, settings, dialog, event, silent_catch, JSONRPC
 from jellyfin import Jellyfin
+from helper import LazyLogger
 
 #################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 
 #################################################################################################
 
@@ -155,6 +155,10 @@ class Player(xbmc.Player):
         LOG.info("-->[ play/%s ] %s", item['Id'], item)
 
     def set_audio_subs(self, audio=None, subtitle=None):
+        if audio:
+            audio=int(audio)
+        if subtitle:
+            subtitle=int(subtitle)
 
         ''' Only for after playback started
         '''
@@ -169,7 +173,7 @@ class Player(xbmc.Player):
             if audio and len(self.getAvailableAudioStreams()) > 1:
                 self.setAudioStream(audio - 1)
 
-            if subtitle == -1 or subtitle is None:
+            if subtitle is None or subtitle == -1:
                 self.showSubtitles(False)
 
                 return
@@ -290,7 +294,7 @@ class Player(xbmc.Player):
             self.report_playback()
             LOG.debug("--<[ paused ]")
 
-    def onPlayBackSeek(self, time, seekOffset):
+    def onPlayBackSeek(self, time, seek_offset):
 
         ''' Does not seem to work in Leia??
         '''
@@ -436,7 +440,7 @@ class Player(xbmc.Player):
                 if delete:
                     LOG.info("Offer delete option")
 
-                    if dialog("yesno", heading=translate(30091), line1=translate(33015), autoclose=120000):
+                    if dialog("yesno", translate(30091), translate(33015), autoclose=120000):
                         item['Server'].jellyfin.delete_item(item['Id'])
 
             window('jellyfin.external_check', clear=True)

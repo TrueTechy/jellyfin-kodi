@@ -3,17 +3,16 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 ##################################################################################################
 
-import logging
-import os
-
 from six import iteritems
-from kodi_six import xbmcgui, xbmcaddon
+from kodi_six import xbmcgui
 
-from helper import translate, addon_id
+from helper import translate
+from helper import LazyLogger
+from helper import kodi_version
 
 ##################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 ACTION_PARENT_DIR = 9
 ACTION_PREVIOUS_MENU = 10
 ACTION_BACK = 92
@@ -53,7 +52,7 @@ class LoginManual(xbmcgui.WindowXMLDialog):
         self.error_toggle = self.getControl(ERROR_TOGGLE)
         self.error_msg = self.getControl(ERROR_MSG)
         self.user_field = self._add_editcontrol(755, 433, 40, 415)
-        self.password_field = self._add_editcontrol(755, 543, 40, 415, password=1)
+        self.password_field = self._add_editcontrol(755, 543, 40, 415, password=True)
 
         if self.username:
 
@@ -97,22 +96,33 @@ class LoginManual(xbmcgui.WindowXMLDialog):
         if action in (ACTION_BACK, ACTION_PARENT_DIR, ACTION_PREVIOUS_MENU):
             self.close()
 
-    def _add_editcontrol(self, x, y, height, width, password=0):
+    def _add_editcontrol(self, x, y, height, width, password=False):
 
-        media = os.path.join(xbmcaddon.Addon(addon_id()).getAddonInfo('path'), 'resources', 'skins', 'default', 'media')
-        control = xbmcgui.ControlEdit(0, 0, 0, 0,
-                                      label="User",
-                                      font="font13",
-                                      textColor="FF00A4DC",
-                                      disabledColor="FF888888",
-                                      focusTexture="-",
-                                      noFocusTexture="-",
-                                      isPassword=password)
+        kwargs = dict(
+            label="User",
+            font="font13",
+            textColor="FF00A4DC",
+            disabledColor="FF888888",
+            focusTexture="-",
+            noFocusTexture="-"
+        )
+
+        # TODO: Kodi 17 compat removal cleanup
+        if kodi_version() < 18:
+            kwargs['isPassword'] = password
+
+        control = xbmcgui.ControlEdit(0, 0, 0, 0, **kwargs)
+
         control.setPosition(x, y)
         control.setHeight(height)
         control.setWidth(width)
 
         self.addControl(control)
+
+        # setType has no effect before the control is added to a window
+        # TODO: Kodi 17 compat removal cleanup
+        if password and not kodi_version() < 18:
+            control.setType(xbmcgui.INPUT_TYPE_PASSWORD, "Please enter password")
 
         return control
 

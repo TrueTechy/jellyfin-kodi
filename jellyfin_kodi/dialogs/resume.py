@@ -3,13 +3,13 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 ##################################################################################################
 
-import logging
-
 from kodi_six import xbmc, xbmcgui
+
+from helper import LazyLogger
 
 ##################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 ACTION_PARENT_DIR = 9
 ACTION_PREVIOUS_MENU = 10
 ACTION_BACK = 92
@@ -46,12 +46,12 @@ class ResumeDialog(xbmcgui.WindowXMLDialog):
         if action in (ACTION_BACK, ACTION_PARENT_DIR, ACTION_PREVIOUS_MENU):
             self.close()
 
-    def onClick(self, controlID):
+    def onClick(self, control_id):
 
-        if controlID == RESUME:
+        if control_id == RESUME:
             self.selected_option = 1
             self.close()
 
-        if controlID == START_BEGINNING:
+        if control_id == START_BEGINNING:
             self.selected_option = 0
             self.close()

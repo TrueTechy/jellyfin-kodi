@@ -3,7 +3,6 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 #################################################################################################
 
-import logging
 import threading
 import sys
 from datetime import timedelta
@@ -12,13 +11,15 @@ from kodi_six import xbmc, xbmcgui, xbmcplugin, xbmcaddon
 
 import database
 from downloader import TheVoid
-from .obj import Objects
 from helper import translate, playutils, api, window, settings, dialog
 from dialogs import resume
+from helper import LazyLogger
+
+from .obj import Objects
 
 #################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 
 #################################################################################################
 
@@ -120,7 +121,7 @@ class Actions(object):
 
             if settings('askCinema') == "true":
 
-                resp = dialog("yesno", heading="{jellyfin}", line1=translate(33016))
+                resp = dialog("yesno", "{jellyfin}", translate(33016))
                 if not resp:
 
                     enabled = False
@@ -133,7 +134,7 @@ class Actions(object):
                     LOG.info("[ intro/%s ] %s", intro['Id'], intro['Name'])
 
                     play = playutils.PlayUtils(intro, False, self.server_id, self.server)
-                    source = play.select_source(play.get_sources())
+                    play.select_source(play.get_sources())
                     self.set_listitem(intro, listitem, intro=True)
                     listitem.setPath(intro['PlaybackInfo']['Path'])
                     playutils.set_properties(intro, intro['PlaybackInfo']['Method'], self.server_id)
@@ -213,6 +214,12 @@ class Actions(object):
             path = '{}/Audio/{}/stream.mp3?static=true&api_key={}'.format(
                 server_address, item['Id'], token)
             listitem.setPath(path)
+
+            play = playutils.PlayUtils(item, False, self.server_id, self.server)
+            source = play.select_source(play.get_sources())
+            play.set_external_subs(source, listitem)
+
+            playutils.set_properties(item, item['PlaybackInfo']['Method'], self.server_id)
 
             playlist.add(path, listitem, index)
             index += 1
@@ -325,8 +332,10 @@ class Actions(object):
         if intro or obj['Type'] == 'Trailer':
             listitem.setArt({'poster': ""})  # Clear the poster value for intros / trailers to prevent issues in skins
 
-        listitem.setIconImage('DefaultVideo.png')
-        listitem.setThumbnailImage(obj['Artwork']['Primary'])
+        listitem.setArt({
+            'icon': 'DefaultVideo.png',
+            'thumb': obj['Artwork']['Primary'],
+        })
 
         if obj['Premiere']:
             obj['Premiere'] = obj['Premiere'].split('T')[0]
@@ -487,12 +496,17 @@ class Actions(object):
             'playcount': obj['PlayCount'],
             'overlay': obj['Overlay']
         }
-        listitem.setIconImage(obj['Artwork']['Thumb'])
-        listitem.setThumbnailImage(obj['Artwork']['Primary'])
+
+        listitem.setArt({
+            'icon': obj['Artwork']['Thumb'],
+            'thumb': obj['Artwork']['Primary'],
+        })
         self.set_artwork(obj['Artwork'], listitem, obj['Type'])
 
         if obj['Artwork']['Primary']:
-            listitem.setThumbnailImage(obj['Artwork']['Primary'])
+            listitem.setArt({
+                'thumb': obj['Artwork']['Primary'],
+            })
 
         if not obj['Artwork']['Backdrop']:
             listitem.setArt({'fanart': obj['Artwork']['Primary']})
@@ -572,7 +586,9 @@ class Actions(object):
             'title': obj['Title']
         }
         listitem.setProperty('path', obj['Artwork']['Primary'])
-        listitem.setThumbnailImage(obj['Artwork']['Primary'])
+        listitem.setArt({
+            'thumb': obj['Artwork']['Primary'],
+        })
 
         if obj['Type'] == 'Photo':
             metadata.update({
@@ -588,10 +604,14 @@ class Actions(object):
             })
             listitem.setProperty('plot', obj['Overview'])
             listitem.setProperty('IsFolder', 'false')
-            listitem.setIconImage('DefaultPicture.png')
+            listitem.setArt({
+                'icon': 'DefaultPicture.png',
+            })
         else:
             listitem.setProperty('IsFolder', 'true')
-            listitem.setIconImage('DefaultFolder.png')
+            listitem.setArt({
+                'icon': 'DefaultFolder.png',
+            })
 
         listitem.setProperty('IsPlayable', 'false')
         listitem.setLabel(obj['Title'])
@@ -784,10 +804,10 @@ def special_listener():
         This is run in a loop within monitor.py
     '''
     player = xbmc.Player()
-    isPlaying = player.isPlaying()
+    is_playing = player.isPlaying()
     count = int(window('jellyfin.external_count') or 0)
 
-    if (not isPlaying and xbmc.getCondVisibility('Window.IsVisible(DialogContextMenu.xml)') and xbmc.getInfoLabel('Control.GetLabel(1002)') == xbmc.getLocalizedString(12021)):
+    if (not is_playing and xbmc.getCondVisibility('Window.IsVisible(DialogContextMenu.xml)') and xbmc.getInfoLabel('Control.GetLabel(1002)') == xbmc.getLocalizedString(12021)):
 
         control = int(xbmcgui.Window(10106).getFocusId())
 
@@ -799,7 +819,7 @@ def special_listener():
             LOG.info("Resume dialog: Resume selected.")
             window('jellyfin.resume.bool', True)
 
-    elif isPlaying and not window('jellyfin.external_check'):
+    elif is_playing and not window('jellyfin.external_check'):
         time = player.getTime()
 
         if time > 1:  # Not external player.

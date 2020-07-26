@@ -14,10 +14,13 @@ from six import text_type
 from database import jellyfin_db
 from helper import translate, settings, window, dialog
 from objects import obj
+from helper import LazyLogger
 
 #################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
+
+ADDON_DATA = xbmc.translatePath("special://profile/addon_data/plugin.video.jellyfin/")
 
 #################################################################################################
 
@@ -66,8 +69,8 @@ class Database(object):
             contents = query.fetchall()
             if contents:
                 for item in contents:
-                    newPath = item[1].replace('/emby/', '/')
-                    self.conn.execute('UPDATE path SET strPath = "{}" WHERE idPath = "{}"'.format(newPath, item[0]))
+                    new_path = item[1].replace('/emby/', '/')
+                    self.conn.execute('UPDATE path SET strPath = "{}" WHERE idPath = "{}"'.format(new_path, item[0]))
 
         return self
 
@@ -221,7 +224,7 @@ def reset():
     from views import Views
     views = Views()
 
-    if not dialog("yesno", heading="{jellyfin}", line1=translate(33074)):
+    if not dialog("yesno", "{jellyfin}", translate(33074)):
         return
 
     window('jellyfin_should_stop.bool', True)
@@ -233,7 +236,7 @@ def reset():
         count -= 1
 
         if not count:
-            dialog("ok", heading="{jellyfin}", line1=translate(33085))
+            dialog("ok", "{jellyfin}", translate(33085))
 
             return
 
@@ -245,25 +248,23 @@ def reset():
     views.delete_playlists()
     views.delete_nodes()
 
-    if dialog("yesno", heading="{jellyfin}", line1=translate(33086)):
+    if dialog("yesno", "{jellyfin}", translate(33086)):
         reset_artwork()
 
-    addon_data = xbmc.translatePath("special://profile/addon_data/plugin.video.jellyfin/")
+    if dialog("yesno", "{jellyfin}", translate(33087)):
 
-    if dialog("yesno", heading="{jellyfin}", line1=translate(33087)):
-
-        xbmcvfs.delete(os.path.join(addon_data, "settings.xml"))
-        xbmcvfs.delete(os.path.join(addon_data, "data.json"))
+        xbmcvfs.delete(os.path.join(ADDON_DATA, "settings.xml"))
+        xbmcvfs.delete(os.path.join(ADDON_DATA, "data.json"))
         LOG.info("[ reset settings ]")
 
-    if xbmcvfs.exists(os.path.join(addon_data, "sync.json")):
-        xbmcvfs.delete(os.path.join(addon_data, "sync.json"))
+    if xbmcvfs.exists(os.path.join(ADDON_DATA, "sync.json")):
+        xbmcvfs.delete(os.path.join(ADDON_DATA, "sync.json"))
 
     settings('enableMusic.bool', False)
     settings('MinimumSetup', "")
     settings('MusicRescan.bool', False)
     settings('SyncInstallRunDone.bool', False)
-    dialog("ok", heading="{jellyfin}", line1=translate(33088))
+    dialog("ok", "{jellyfin}", translate(33088))
     xbmc.executebuiltin('RestartApp')
 
 
@@ -278,7 +279,7 @@ def reset_kodi():
             if name != 'version':
                 videodb.cursor.execute("DELETE FROM " + name)
 
-    if settings('enableMusic.bool') or dialog("yesno", heading="{jellyfin}", line1=translate(33162)):
+    if settings('enableMusic.bool') or dialog("yesno", "{jellyfin}", translate(33162)):
 
         with Database('music') as musicdb:
             musicdb.cursor.execute("SELECT tbl_name FROM sqlite_master WHERE type='table'")
@@ -340,13 +341,11 @@ def reset_artwork():
 
 def get_sync():
 
-    path = xbmc.translatePath("special://profile/addon_data/plugin.video.jellyfin/")
-
-    if not xbmcvfs.exists(path):
-        xbmcvfs.mkdirs(path)
+    if not xbmcvfs.exists(ADDON_DATA):
+        xbmcvfs.mkdirs(ADDON_DATA)
 
     try:
-        with open(os.path.join(path, 'sync.json'), 'rb') as infile:
+        with open(os.path.join(ADDON_DATA, 'sync.json'), 'rb') as infile:
             sync = json.load(infile, encoding='utf-8')
     except Exception:
         sync = {}
@@ -361,14 +360,12 @@ def get_sync():
 
 def save_sync(sync):
 
-    path = xbmc.translatePath("special://profile/addon_data/plugin.video.jellyfin/")
-
-    if not xbmcvfs.exists(path):
-        xbmcvfs.mkdirs(path)
+    if not xbmcvfs.exists(ADDON_DATA):
+        xbmcvfs.mkdirs(ADDON_DATA)
 
     sync['Date'] = datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
 
-    with open(os.path.join(path, 'sync.json'), 'wb') as outfile:
+    with open(os.path.join(ADDON_DATA, 'sync.json'), 'wb') as outfile:
         data = json.dumps(sync, sort_keys=True, indent=4, ensure_ascii=False)
         if isinstance(data, text_type):
             data = data.encode('utf-8')
@@ -377,22 +374,20 @@ def save_sync(sync):
 
 def get_credentials():
 
-    path = xbmc.translatePath("special://profile/addon_data/plugin.video.jellyfin/")
-
-    if not xbmcvfs.exists(path):
-        xbmcvfs.mkdirs(path)
+    if not xbmcvfs.exists(ADDON_DATA):
+        xbmcvfs.mkdirs(ADDON_DATA)
 
     try:
-        with open(os.path.join(path, 'data.json'), 'rb') as infile:
+        with open(os.path.join(ADDON_DATA, 'data.json'), 'rb') as infile:
             credentials = json.load(infile, encoding='utf8')
     except Exception:
 
         try:
-            with open(os.path.join(path, 'data.txt'), 'rb') as infile:
+            with open(os.path.join(ADDON_DATA, 'data.txt'), 'rb') as infile:
                 credentials = json.load(infile, encoding='utf-8')
                 save_credentials(credentials)
 
-            xbmcvfs.delete(os.path.join(path, 'data.txt'))
+            xbmcvfs.delete(os.path.join(ADDON_DATA, 'data.txt'))
         except Exception:
             credentials = {}
 
@@ -421,12 +416,11 @@ def get_credentials():
 
 def save_credentials(credentials):
     credentials = credentials or {}
-    path = xbmc.translatePath("special://profile/addon_data/plugin.video.jellyfin/")
 
-    if not xbmcvfs.exists(path):
-        xbmcvfs.mkdirs(path)
+    if not xbmcvfs.exists(ADDON_DATA):
+        xbmcvfs.mkdirs(ADDON_DATA)
     try:
-        with open(os.path.join(path, 'data.json'), 'wb') as outfile:
+        with open(os.path.join(ADDON_DATA, 'data.json'), 'wb') as outfile:
             data = json.dumps(credentials, sort_keys=True, indent=4, ensure_ascii=False)
             if isinstance(data, text_type):
                 data = data.encode('utf-8')

@@ -3,17 +3,18 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 #################################################################################################
 
-import logging
 import os
 import xml.etree.ElementTree as etree
 
 from kodi_six import xbmc
 
+from helper import LazyLogger
+
 from . import translate, dialog, settings
 
 #################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 
 #################################################################################################
 
@@ -128,7 +129,7 @@ def advanced_settings():
             tree = etree.ElementTree(xml)
             tree.write(path)
 
-            dialog("ok", heading="{jellyfin}", line1=translate(33097))
+            dialog("ok", "{jellyfin}", translate(33097))
             xbmc.executebuiltin('RestartApp')
 
             return True

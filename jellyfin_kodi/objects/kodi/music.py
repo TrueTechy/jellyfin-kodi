@@ -3,14 +3,14 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 ##################################################################################################
 
-import logging
+from helper import LazyLogger
 
 from . import queries_music as QU
 from .kodi import Kodi
 
 ##################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 
 ##################################################################################################
 
@@ -61,15 +61,15 @@ class Music(Kodi):
         try:
             self.cursor.execute(QU.get_artist, (musicbrainz,))
             result = self.cursor.fetchone()
-            artist_id = result[0]
+            artist_id_res = result[0]
             artist_name = result[1]
         except TypeError:
-            artist_id = self.add_artist(artist_id, name, musicbrainz)
+            artist_id_res = self.add_artist(artist_id, name, musicbrainz)
         else:
             if artist_name != name:
                 self.update_artist_name(artist_id, name)
 
-        return artist_id
+        return artist_id_res
 
     def add_artist(self, artist_id, name, *args):
 
@@ -77,12 +77,12 @@ class Music(Kodi):
         '''
         try:
             self.cursor.execute(QU.get_artist_by_name, (name,))
-            artist_id = self.cursor.fetchone()[0]
+            artist_id_res = self.cursor.fetchone()[0]
         except TypeError:
-            artist_id = artist_id or self.create_entry()
+            artist_id_res = artist_id or self.create_entry()
             self.cursor.execute(QU.add_artist, (artist_id, name,) + args)
 
-        return artist_id
+        return artist_id_res
 
     def update_artist_name(self, *args):
         self.cursor.execute(QU.update_artist_name, args)
@@ -160,8 +160,10 @@ class Music(Kodi):
     def update_album(self, *args):
         if self.version_id < 72:
             self.cursor.execute(QU.update_album, args)
-        else:
+        elif self.version_id < 74:
             self.cursor.execute(QU.update_album72, args)
+        else:
+            self.cursor.execute(QU.update_album74, args)
 
     def get_album_artist(self, album_id, artists):
 
@@ -184,19 +186,26 @@ class Music(Kodi):
             self.cursor.execute(QU.update_album_artist72, args)
 
     def add_single(self, *args):
-        self.cursor.execute(QU.add_single, args)
+        if self.version_id < 74:
+            self.cursor.execute(QU.add_single, args)
+        else:
+            self.cursor.execute(QU.add_single74, args)
 
     def add_song(self, *args):
         if self.version_id < 72:
             self.cursor.execute(QU.add_song, args)
-        else:
+        elif self.version_id < 74:
             self.cursor.execute(QU.add_song72, args)
+        else:
+            self.cursor.execute(QU.add_song74, args)
 
     def update_song(self, *args):
         if self.version_id < 72:
             self.cursor.execute(QU.update_song, args)
-        else:
+        elif self.version_id < 74:
             self.cursor.execute(QU.update_song72, args)
+        else:
+            self.cursor.execute(QU.update_song74, args)
 
     def link_song_artist(self, *args):
         self.cursor.execute(QU.update_song_artist, args)

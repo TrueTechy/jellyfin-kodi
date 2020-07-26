@@ -3,19 +3,19 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 #################################################################################################
 
-import json
-import logging
 import time
 
 import requests
-from six import string_types
+from six import string_types, ensure_str
+
+from helper.utils import JsonDebugPrinter
+from helper import LazyLogger
 
 from .exceptions import HTTPException
-from helper.utils import JsonDebugPrinter
 
 #################################################################################################
 
-LOG = logging.getLogger('Jellyfin.' + __name__)
+LOG = LazyLogger(__name__)
 
 #################################################################################################
 
@@ -154,9 +154,6 @@ class HTTP(object):
                 LOG.error("Request missing Schema. " + str(error))
                 raise HTTPException("MissingSchema", {'Id': self.config.data.get('auth.server', "None")})
 
-            except Exception as error:
-                raise
-
             else:
                 try:
                     self.config.data['server-time'] = r.headers['Date']
@@ -219,12 +216,14 @@ class HTTP(object):
         auth += "DeviceId=%s, " % self.config.data.get('app.device_id', 'Unknown Device id')
         auth += "Version=%s" % self.config.data.get('app.version', '0.0.0')
 
-        data['headers'].update({'x-emby-authorization': auth})
+        data['headers'].update({'x-emby-authorization': ensure_str(auth, 'utf-8')})
 
         if self.config.data.get('auth.token') and self.config.data.get('auth.user_id'):
-            
+
             auth += ', UserId=%s' % self.config.data.get('auth.user_id')
-            data['headers'].update({'x-emby-authorization': auth, 'X-MediaBrowser-Token': self.config.data.get('auth.token')})
+            data['headers'].update({
+                'x-emby-authorization': ensure_str(auth, 'utf-8'),
+                'X-MediaBrowser-Token': self.config.data.get('auth.token')})
 
         return data
 

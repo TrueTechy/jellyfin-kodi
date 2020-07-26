@@ -5,7 +5,6 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 import binascii
 import json
-import logging
 import threading
 
 from kodi_six import xbmc
@@ -19,10 +18,11 @@ from helper import translate, settings, window, dialog, api, JSONRPC
 from helper.utils import JsonDebugPrinter
 from jellyfin import Jellyfin
 from webservice import WebService
+from helper import LazyLogger
 
 #################################################################################################
 
-LOG = logging.getLogger("JELLYFIN." + __name__)
+LOG = LazyLogger(__name__)
 
 #################################################################################################
 
@@ -116,7 +116,7 @@ class Monitor(xbmc.Monitor):
                     except Exception as error:
 
                         LOG.exception(error)
-                        dialog("ok", heading="{jellyfin}", line1=translate(33142))
+                        dialog("ok", "{jellyfin}", translate(33142))
 
                         return
 
@@ -389,6 +389,8 @@ class Monitor(xbmc.Monitor):
             elif command == 'SetSubtitleStreamIndex':
                 self.player.set_audio_subs(None, args['Index'])
 
+            # Kodi needs a bit of time to update it's current status
+            xbmc.sleep(500)
             self.player.report_playback()
 
         elif command == 'DisplayMessage':

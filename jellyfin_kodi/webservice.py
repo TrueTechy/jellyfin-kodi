@@ -3,18 +3,20 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 
 #################################################################################################
 
-from six.moves import BaseHTTPServer
-import logging
-from six.moves import http_client as httplib
 import threading
+
+from six.moves import BaseHTTPServer
+from six.moves import http_client as httplib
 from six.moves.urllib.parse import parse_qsl
 
 from kodi_six import xbmc
 
+from helper import LazyLogger
+
 #################################################################################################
 
+LOG = LazyLogger(__name__)
 PORT = 57578
-LOG = logging.getLogger("JELLYFIN." + __name__)
 
 #################################################################################################
 
@@ -111,8 +113,6 @@ class requestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
-        return
-
     def do_GET(self):
 
         ''' Return plugin path
@@ -142,5 +142,3 @@ class requestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             LOG.exception(error)
 
             self.send_error(500, "Exception occurred: %s" % error)
-
-        return
