@@ -14,7 +14,7 @@ import requests
 from helper import settings, stop, event, window, create_id
 from jellyfin import Jellyfin
 from jellyfin import api
-from jellyfin.exceptions import HTTPException
+from helper.exceptions import HTTPException
 from helper import LazyLogger
 
 #################################################################################################
@@ -189,31 +189,40 @@ def get_items(parent_id, item_type=None, basic=False, params=None):
         yield items
 
 
-def get_artists(parent_id=None, basic=False, params=None, server_id=None):
+def get_artists(parent_id=None):
 
-    query = {
-        'url': "Artists",
-        'params': {
-            'UserId': "{UserId}",
-            'ParentId': parent_id,
-            'SortBy': "SortName",
-            'SortOrder': "Ascending",
-            'Fields': api.basic_info() if basic else api.music_info(),
-            'CollapseBoxSetItems': False,
-            'IsVirtualUnaired': False,
-            'EnableTotalRecordCount': False,
-            'LocationTypes': "FileSystem,Remote,Offline",
-            'IsMissing': False,
-            'Recursive': True
-        }
+    url = "Artists"
+
+    params = {
+        'UserId': "{UserId}",
+        'ParentId': parent_id,
+        'SortBy': "SortName",
+        'SortOrder': "Ascending",
+        'Fields': api.music_info(),
+        'CollapseBoxSetItems': False,
+        'IsVirtualUnaired': False,
+        'EnableTotalRecordCount': False,
+        'LocationTypes': "FileSystem,Remote,Offline",
+        'IsMissing': False,
+        'Recursive': True
     }
 
-    if params:
-        query['params'].update(params)
+    return _get(url, params)
 
-    for items in _get_items(query, server_id):
-        yield items
 
+def get_library_items(library_id, item_type):
+    url = "Users/{UserId}/Items"
+
+    params = {
+        'ParentId': library_id,
+        'IncludeItemTypes': item_type,
+        'SortBy': "SortName",
+        'SortOrder': "Ascending",
+        'Fields': api.info(),
+        'Recursive': True,
+    }
+
+    return _get(url, params)
 
 def get_albums_by_artist(artist_id, basic=False):
 
@@ -235,7 +244,7 @@ def get_songs_by_artist(artist_id, basic=False):
         yield items
 
 
-@stop()
+@stop
 def _get_items(query, server_id=None):
 
     ''' query = {

@@ -11,8 +11,9 @@ from kodi_six.utils import py2_encode
 
 import downloader as server
 from database import jellyfin_db, queries as QUEM
-from helper import api, stop, validate, jellyfin_item, library_check, values, Local
+from helper import api, stop, validate, jellyfin_item, values, Local
 from helper import LazyLogger
+from helper.exceptions import PathValidationException
 
 from .obj import Objects
 from .kodi import TVShows as KodiDb, queries as QU
@@ -26,7 +27,7 @@ LOG = LazyLogger(__name__)
 
 class TVShows(KodiDb):
 
-    def __init__(self, server, jellyfindb, videodb, direct_path, update_library=False):
+    def __init__(self, server, jellyfindb, videodb, direct_path, library=None, update_library=False):
 
         self.server = server
         self.jellyfin = jellyfindb
@@ -37,13 +38,13 @@ class TVShows(KodiDb):
         self.jellyfin_db = jellyfin_db.JellyfinDatabase(jellyfindb.cursor)
         self.objects = Objects()
         self.item_ids = []
+        self.library = library
 
         KodiDb.__init__(self, videodb.cursor)
 
-    @stop()
-    @jellyfin_item()
-    @library_check()
-    def tvshow(self, item, e_item, library):
+    @stop
+    @jellyfin_item
+    def tvshow(self, item, e_item):
 
         ''' If item does not exist, entry will be added.
             If item exists, entry will be updated.
@@ -71,8 +72,8 @@ class TVShows(KodiDb):
                 LOG.info("ShowId %s missing from kodi. repairing the entry.", obj['ShowId'])
 
         obj['Path'] = API.get_file_path(obj['Path'])
-        obj['LibraryId'] = library['Id']
-        obj['LibraryName'] = library['Name']
+        obj['LibraryId'] = self.library['Id']
+        obj['LibraryName'] = self.library['Name']
         obj['Genres'] = obj['Genres'] or []
         obj['People'] = obj['People'] or []
         obj['Mpaa'] = API.get_mpaa(obj['Mpaa'])
@@ -195,12 +196,12 @@ class TVShows(KodiDb):
                 obj['TopLevel'] = "plugin://plugin.video.jellyfin/"
 
             if not validate(obj['Path']):
-                raise Exception("Failed to validate path. User stopped.")
+                raise PathValidationException("Failed to validate path. User stopped.")
         else:
             obj['TopLevel'] = "plugin://plugin.video.jellyfin/%s/" % obj['LibraryId']
             obj['Path'] = "%s%s/" % (obj['TopLevel'], obj['Id'])
 
-    @stop()
+    @stop
     def season(self, item, show_id=None):
 
         ''' If item does not exist, entry will be added.
@@ -218,8 +219,9 @@ class TVShows(KodiDb):
 
             try:
                 obj['ShowId'] = self.jellyfin_db.get_item_by_id(*values(obj, QUEM.get_item_series_obj))[0]
-            except (KeyError, TypeError):
+            except (KeyError, TypeError) as error:
                 LOG.error("Unable to add series %s", obj['SeriesId'])
+                LOG.exception(error)
 
                 return False
 
@@ -233,8 +235,8 @@ class TVShows(KodiDb):
         self.artwork.add(obj['Artwork'], obj['SeasonId'], "season")
         LOG.debug("UPDATE season [%s/%s] %s: %s", obj['ShowId'], obj['SeasonId'], obj['Title'] or obj['Index'], obj['Id'])
 
-    @stop()
-    @jellyfin_item()
+    @stop
+    @jellyfin_item
     def episode(self, item, e_item):
 
         ''' If item does not exist, entry will be added.
@@ -390,7 +392,7 @@ class TVShows(KodiDb):
         if self.direct_path:
 
             if not validate(obj['Path']):
-                raise Exception("Failed to validate path. User stopped.")
+                raise PathValidationException("Failed to validate path. User stopped.")
 
             obj['Path'] = obj['Path'].replace(obj['Filename'], "")
         else:
@@ -409,10 +411,11 @@ class TVShows(KodiDb):
         if obj['ShowId'] is None:
 
             try:
-                self.tvshow(self.server.jellyfin.get_item(obj['SeriesId']), library=None)
+                self.tvshow(self.server.jellyfin.get_item(obj['SeriesId']))
                 obj['ShowId'] = self.jellyfin_db.get_item_by_id(*values(obj, QUEM.get_item_series_obj))[0]
-            except (TypeError, KeyError):
+            except (TypeError, KeyError) as error:
                 LOG.error("Unable to add series %s", obj['SeriesId'])
+                LOG.exception(error)
 
                 return False
         else:
@@ -422,8 +425,8 @@ class TVShows(KodiDb):
 
         return True
 
-    @stop()
-    @jellyfin_item()
+    @stop
+    @jellyfin_item
     def userdata(self, item, e_item):
 
         ''' This updates: Favorite, LastPlayedDate, Playcount, PlaybackPositionTicks
@@ -483,8 +486,8 @@ class TVShows(KodiDb):
         self.jellyfin_db.update_reference(*values(obj, QUEM.update_reference_obj))
         LOG.debug("USERDATA %s [%s/%s] %s: %s", obj['Media'], obj['FileId'], obj['KodiId'], obj['Id'], obj['Title'])
 
-    @stop()
-    @jellyfin_item()
+    @stop
+    @jellyfin_item
     def remove(self, item_id, e_item):
 
         ''' Remove showid, fileid, pathid, jellyfin reference.
@@ -586,7 +589,7 @@ class TVShows(KodiDb):
         self.delete_episode(kodi_id, file_id)
         LOG.debug("DELETE episode [%s/%s] %s", file_id, kodi_id, item_id)
 
-    @jellyfin_item()
+    @jellyfin_item
     def get_child(self, item_id, e_item):
 
         ''' Get all child elements from tv show jellyfin id.

@@ -8,8 +8,9 @@ from kodi_six.utils import py2_encode
 
 import downloader as server
 from database import jellyfin_db, queries as QUEM
-from helper import api, stop, validate, validate_bluray_dir, validate_dvd_dir, jellyfin_item, library_check, values, Local
+from helper import api, stop, validate, validate_bluray_dir, validate_dvd_dir, jellyfin_item, values, Local
 from helper import LazyLogger
+from helper.exceptions import PathValidationException
 
 from .obj import Objects
 from .kodi import Movies as KodiDb, queries as QU
@@ -23,7 +24,7 @@ LOG = LazyLogger(__name__)
 
 class Movies(KodiDb):
 
-    def __init__(self, server, jellyfindb, videodb, direct_path):
+    def __init__(self, server, jellyfindb, videodb, direct_path, library=None):
 
         self.server = server
         self.jellyfin = jellyfindb
@@ -33,13 +34,13 @@ class Movies(KodiDb):
         self.jellyfin_db = jellyfin_db.JellyfinDatabase(jellyfindb.cursor)
         self.objects = Objects()
         self.item_ids = []
+        self.library = library
 
         KodiDb.__init__(self, videodb.cursor)
 
-    @stop()
-    @jellyfin_item()
-    @library_check()
-    def movie(self, item, e_item, library):
+    @stop
+    @jellyfin_item
+    def movie(self, item, e_item):
 
         ''' If item does not exist, entry will be added.
             If item exists, entry will be updated.
@@ -64,8 +65,8 @@ class Movies(KodiDb):
                 LOG.info("MovieId %s missing from kodi. repairing the entry.", obj['MovieId'])
 
         obj['Path'] = API.get_file_path(obj['Path'])
-        obj['LibraryId'] = library['Id']
-        obj['LibraryName'] = library['Name']
+        obj['LibraryId'] = self.library['Id']
+        obj['LibraryName'] = self.library['Name']
         obj['Genres'] = obj['Genres'] or []
         obj['Studios'] = [API.validate_studio(studio) for studio in (obj['Studios'] or [])]
         obj['People'] = obj['People'] or []
@@ -173,7 +174,7 @@ class Movies(KodiDb):
         if self.direct_path:
 
             if not validate(obj['Path']):
-                raise Exception("Failed to validate path. User stopped.")
+                raise PathValidationException("Failed to validate path. User stopped.")
 
             obj['Path'] = obj['Path'].replace(obj['Filename'], "")
 
@@ -199,8 +200,8 @@ class Movies(KodiDb):
             }
             obj['Filename'] = "%s?%s" % (obj['Path'], urlencode(params))
 
-    @stop()
-    @jellyfin_item()
+    @stop
+    @jellyfin_item
     def boxset(self, item, e_item):
 
         ''' If item does not exist, entry will be added.
@@ -280,8 +281,8 @@ class Movies(KodiDb):
         for boxset in boxsets:
             self.remove(boxset[0])
 
-    @stop()
-    @jellyfin_item()
+    @stop
+    @jellyfin_item
     def userdata(self, item, e_item):
 
         ''' This updates: Favorite, LastPlayedDate, Playcount, PlaybackPositionTicks
@@ -314,8 +315,8 @@ class Movies(KodiDb):
         self.jellyfin_db.update_reference(*values(obj, QUEM.update_reference_obj))
         LOG.debug("USERDATA movie [%s/%s] %s: %s", obj['FileId'], obj['MovieId'], obj['Id'], obj['Title'])
 
-    @stop()
-    @jellyfin_item()
+    @stop
+    @jellyfin_item
     def remove(self, item_id, e_item):
 
         ''' Remove movieid, fileid, jellyfin reference.
