@@ -7,11 +7,10 @@ import threading
 import concurrent.futures
 from datetime import date
 
-from six.moves import range, queue as Queue, zip
+from six.moves import range, queue as Queue
 
-from kodi_six import xbmc
 import requests
-from helper import settings, stop, event, window, create_id
+from helper import settings, stop, window
 from jellyfin import Jellyfin
 from jellyfin import api
 from helper.exceptions import HTTPException
@@ -20,8 +19,6 @@ from helper import LazyLogger
 #################################################################################################
 
 LOG = LazyLogger(__name__)
-LIMIT = min(int(settings('limitIndex') or 50), 50)
-DTHREADS = int(settings('limitThreads') or 3)
 
 #################################################################################################
 
@@ -34,13 +31,6 @@ def get_jellyfinserver_url(handler):
         LOG.info("handler starts with /: %s", handler)
 
     return "{server}/%s" % handler
-
-
-def browse_info():
-    return (
-        "DateCreated,EpisodeCount,SeasonCount,Path,Genres,Studios,Taglines,MediaStreams,Overview,Etag,"
-        "ProductionLocations,Width,Height,RecursiveItemCount,ChildCount"
-    )
 
 
 def _http(action, url, request=None, server_id=None):
@@ -91,42 +81,6 @@ def get_single_item(parent_id, media):
     })
 
 
-def get_filtered_section(parent_id=None, media=None, limit=None, recursive=None, sort=None, sort_order=None,
-                         filters=None, extra=None, server_id=None):
-
-    ''' Get dynamic listings.
-    '''
-    params = {
-        'ParentId': parent_id,
-        'IncludeItemTypes': media,
-        'IsMissing': False,
-        'Recursive': recursive if recursive is not None else True,
-        'Limit': limit,
-        'SortBy': sort or "SortName",
-        'SortOrder': sort_order or "Ascending",
-        'ImageTypeLimit': 1,
-        'IsVirtualUnaired': False,
-        'Fields': browse_info()
-    }
-    if filters:
-        if 'Boxsets' in filters:
-            filters.remove('Boxsets')
-            params['CollapseBoxSetItems'] = settings('groupedSets.bool')
-
-        params['Filters'] = ','.join(filters)
-
-    if settings('getCast.bool'):
-        params['Fields'] += ",People"
-
-    if media and 'Photo' in media:
-        params['Fields'] += ",Width,Height"
-
-    if extra is not None:
-        params.update(extra)
-
-    return _get("Users/{UserId}/Items", params, server_id)
-
-
 def get_movies_by_boxset(boxset_id):
 
     for items in get_items(boxset_id, "Movie"):
@@ -164,6 +118,26 @@ def get_episode_by_season(show_id, season_id):
         yield items
 
 
+def get_item_count(parent_id, item_type=None, params=None):
+
+    url = "Users/{UserId}/Items"
+
+    query_params = {
+        'ParentId': parent_id,
+        'IncludeItemTypes': item_type,
+        'EnableTotalRecordCount': True,
+        'LocationTypes': "FileSystem,Remote,Offline",
+        'Recursive': True,
+        'Limit': 1
+    }
+    if params:
+        query_params['params'].update(params)
+
+    result = _get(url, query_params)
+
+    return result.get('TotalRecordCount', 1)
+
+
 def get_items(parent_id, item_type=None, basic=False, params=None):
 
     query = {
@@ -191,56 +165,24 @@ def get_items(parent_id, item_type=None, basic=False, params=None):
 
 def get_artists(parent_id=None):
 
-    url = "Artists"
-
-    params = {
-        'UserId': "{UserId}",
-        'ParentId': parent_id,
-        'SortBy': "SortName",
-        'SortOrder': "Ascending",
-        'Fields': api.music_info(),
-        'CollapseBoxSetItems': False,
-        'IsVirtualUnaired': False,
-        'EnableTotalRecordCount': False,
-        'LocationTypes': "FileSystem,Remote,Offline",
-        'IsMissing': False,
-        'Recursive': True
+    query = {
+        'url': 'Artists',
+        'params': {
+            'UserId': "{UserId}",
+            'ParentId': parent_id,
+            'SortBy': "SortName",
+            'SortOrder': "Ascending",
+            'Fields': api.music_info(),
+            'CollapseBoxSetItems': False,
+            'IsVirtualUnaired': False,
+            'EnableTotalRecordCount': False,
+            'LocationTypes': "FileSystem,Remote,Offline",
+            'IsMissing': False,
+            'Recursive': True
+        }
     }
 
-    return _get(url, params)
-
-
-def get_library_items(library_id, item_type):
-    url = "Users/{UserId}/Items"
-
-    params = {
-        'ParentId': library_id,
-        'IncludeItemTypes': item_type,
-        'SortBy': "SortName",
-        'SortOrder': "Ascending",
-        'Fields': api.info(),
-        'Recursive': True,
-    }
-
-    return _get(url, params)
-
-def get_albums_by_artist(artist_id, basic=False):
-
-    params = {
-        'SortBy': "DateCreated",
-        'ArtistIds': artist_id
-    }
-    for items in get_items(None, "MusicAlbum", basic, params):
-        yield items
-
-
-def get_songs_by_artist(artist_id, basic=False):
-
-    params = {
-        'SortBy': "DateCreated",
-        'ArtistIds': artist_id
-    }
-    for items in get_items(None, "Audio", basic, params):
+    for items in _get_items(query):
         yield items
 
 
@@ -257,6 +199,9 @@ def _get_items(query, server_id=None):
         'TotalRecordCount': 0,
         'RestorePoint': {}
     }
+
+    limit = min(int(settings('limitIndex') or 50), 50)
+    dthreads = int(settings('limitThreads') or 3)
 
     url = query['url']
     query.setdefault('params', {})
@@ -282,38 +227,60 @@ def _get_items(query, server_id=None):
             return params_copy
 
         query_params = [
-            get_query_params(params, offset, LIMIT)
+            get_query_params(params, offset, limit)
             for offset
-            in range(params['StartIndex'], items['TotalRecordCount'], LIMIT)
+            in range(params['StartIndex'], items['TotalRecordCount'], limit)
         ]
 
         # multiprocessing.dummy.Pool completes all requests in multiple threads but has to
         # complete all tasks before allowing any results to be processed. ThreadPoolExecutor
         # allows for completed tasks to be processed while other tasks are completed on other
         # threads. Dont be a dummy.Pool, be a ThreadPoolExecutor
-        p = concurrent.futures.ThreadPoolExecutor(DTHREADS)
+        with concurrent.futures.ThreadPoolExecutor(dthreads) as p:
+            # dictionary for storing the jobs and their results
+            jobs = {}
 
-        results = p.map(lambda params: _get(url, params, server_id=server_id), query_params)
+            # semaphore to avoid fetching complete library to memory
+            thread_buffer = threading.Semaphore(dthreads)
 
-        for params, result in zip(query_params, results):
-            query['params'] = params
+            # wrapper function for _get that uses a semaphore
+            def get_wrapper(params):
+                thread_buffer.acquire()
+                return _get(url, params, server_id=server_id)
 
-            result = result or {'Items': []}
+            # create jobs
+            for param in query_params:
+                job = p.submit(get_wrapper, param)
+                # the query params are later needed again
+                jobs[job] = param
 
-            # Mitigates #216 till the server validates the date provided is valid
-            if result['Items'][0].get('ProductionYear'):
-                try:
-                    date(result['Items'][0]['ProductionYear'], 1, 1)
-                except ValueError:
-                    LOG.info('#216 mitigation triggered. Setting ProductionYear to None')
-                    result['Items'][0]['ProductionYear'] = None
+            # process complete jobs
+            for job in concurrent.futures.as_completed(jobs):
+                # get the result
+                result = job.result() or {'Items': []}
+                query['params'] = jobs[job]
 
-            items['Items'].extend(result['Items'])
-            # Using items to return data and communicate a restore point back to the callee is
-            # a violation of the SRP. TODO: Seperate responsibilities.
-            items['RestorePoint'] = query
-            yield items
-            del items['Items'][:]
+                # free job memory
+                del jobs[job]
+                del job
+
+                # Mitigates #216 till the server validates the date provided is valid
+                if result['Items'][0].get('ProductionYear'):
+                    try:
+                        date(result['Items'][0]['ProductionYear'], 1, 1)
+                    except ValueError:
+                        LOG.info('#216 mitigation triggered. Setting ProductionYear to None')
+                        result['Items'][0]['ProductionYear'] = None
+
+                items['Items'].extend(result['Items'])
+                # Using items to return data and communicate a restore point back to the callee is
+                # a violation of the SRP. TODO: Seperate responsibilities.
+                items['RestorePoint'] = query
+                yield items
+                del items['Items'][:]
+
+                # release the semaphore again
+                thread_buffer.release()
 
 
 class GetItemWorker(threading.Thread):
@@ -370,43 +337,3 @@ class GetItemWorker(threading.Thread):
 
                 if window('jellyfin_should_stop.bool'):
                     break
-
-
-class TheVoid(object):
-
-    def __init__(self, method, data):
-
-        ''' If you call get, this will block until response is received.
-            This is used to communicate between entrypoints.
-        '''
-        if type(data) != dict:
-            raise Exception("unexpected data format")
-
-        data['VoidName'] = str(create_id())
-        LOG.info("---[ contact MU-TH-UR 6000/%s ]", method)
-        LOG.debug(data)
-
-        event(method, data)
-        self.method = method
-        self.data = data
-
-    def get(self):
-
-        while True:
-
-            response = window('jellyfin_%s.json' % self.data['VoidName'])
-
-            if response != "":
-
-                LOG.debug("--<[ nostromo/jellyfin_%s.json ]", self.data['VoidName'])
-                window('jellyfin_%s' % self.data['VoidName'], clear=True)
-
-                return response
-
-            if window('jellyfin_should_stop.bool'):
-                LOG.info("Abandon mission! A black hole just swallowed [ %s/%s ]", self.method, self.data['VoidName'])
-
-                return
-
-            xbmc.sleep(100)
-            LOG.info("--[ void/%s ]", self.data['VoidName'])

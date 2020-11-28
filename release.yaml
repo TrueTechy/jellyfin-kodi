@@ -1,3 +1,3 @@
-version: '0.5.8'
+version: '0.6.5'
 changelog: |
-  #322 Force filter parameter during incremental sync
+  - #426 Remove verify_kodi_defaults function

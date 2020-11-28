@@ -1,7 +1,7 @@
 msgid ""
 msgstr ""
-"PO-Revision-Date: 2020-05-30 20:09+0000\n"
-"Last-Translator: WontTell <executor260@gmail.com>\n"
+"PO-Revision-Date: 2020-11-11 10:04+0000\n"
+"Last-Translator: newton181 <newton181.1@gmail.com>\n"
 "Language-Team: Spanish (Latin America) <https://translate.jellyfin.org/"
 "projects/jellyfin/jellyfin-kodi/es_419/>\n"
 "Language: es_419\n"
@@ -378,7 +378,7 @@ msgstr "Eliminar de Jellyfin"
 
 msgctxt "#30408"
 msgid "Settings"
-msgstr "Configuraciones"
+msgstr "Configuración"
 
 msgctxt "#30406"
 msgid "Remove from favorites"
@@ -462,7 +462,7 @@ msgstr "Películas no vistas"
 
 msgctxt "#30185"
 msgid "Boxsets"
-msgstr "Box sets"
+msgstr "Colecciones"
 
 msgctxt "#30182"
 msgid "Favorite Episodes"
@@ -961,3 +961,43 @@ msgctxt "#33104"
 msgid "Find more info in the github wiki/Create-and-restore-from-backup."
 msgstr ""
 "Encuentra más información en GitHub wiki/Create-and-restore-from-backup."
+
+msgctxt "#33201"
+msgid "Max artwork resolution"
+msgstr "Resolución máxima para carátulas"
+
+msgctxt "#33115"
+msgid "Transcode options"
+msgstr "Opciones de transcodificación"
+
+msgctxt "#30524"
+msgid "Transcode VC-1"
+msgstr "Transcodificar VC-1"
+
+msgctxt "#30523"
+msgid "Transcode MPEG2"
+msgstr "Transcodificar MPEG2"
+
+msgctxt "#30164"
+msgid "Audio max channels"
+msgstr "Tasa de bits de video"
+
+msgctxt "#30163"
+msgid "Audio bitrate"
+msgstr "Tasa de bits de audio"
+
+msgctxt "#30162"
+msgid "Preferred audio codec"
+msgstr "Codec de audio preferido"
+
+msgctxt "#30161"
+msgid "Preferred video codec"
+msgstr "Codec de video preferido"
+
+msgctxt "#30160"
+msgid "Max stream bitrate"
+msgstr "Tasa de bits máxima"
+
+msgctxt "#30165"
+msgid "Allow burned subtitles"
+msgstr "Permitir subtítulos permanentes"

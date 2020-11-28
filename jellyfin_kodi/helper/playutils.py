@@ -11,7 +11,6 @@ from kodi_six import xbmc, xbmcvfs
 
 import client
 import requests
-from downloader import TheVoid
 from helper import LazyLogger
 
 from . import translate, settings, window, dialog, api
@@ -53,30 +52,26 @@ def set_properties(item, method, server_id=None):
 
 class PlayUtils(object):
 
-    def __init__(self, item, force_transcode=False, server_id=None, server=None, token=None):
+    def __init__(self, item, force_transcode=False, server_id=None, server=None, api_client=None):
 
         ''' Item will be updated with the property PlaybackInfo, which
             holds all the playback information.
         '''
         self.item = item
         self.item['PlaybackInfo'] = {}
+        self.api_client = api_client
         self.info = {
             'ServerId': server_id,
             'ServerAddress': server,
             'ForceTranscode': force_transcode,
-            'Token': token or TheVoid('GetToken', {'ServerId': server_id}).get()
+            'Token': api_client.config.data['auth.token']
         }
 
     def get_sources(self, source_id=None):
 
         ''' Return sources based on the optional source_id or the device profile.
         '''
-        params = {
-            'ServerId': self.info['ServerId'],
-            'Id': self.item['Id'],
-            'Profile': self.get_device_profile()
-        }
-        info = TheVoid('GetPlaybackInfo', params).get()
+        info = self.api_client.get_play_info(self.item['Id'], self.get_device_profile())
         LOG.info(info)
         self.info['PlaySessionId'] = info['PlaySessionId']
         sources = []
@@ -217,14 +212,7 @@ class PlayUtils(object):
 
         ''' Get live stream media info.
         '''
-        params = {
-            'ServerId': self.info['ServerId'],
-            'Id': self.item['Id'],
-            'Profile': self.get_device_profile(),
-            'PlaySessionId': self.info['PlaySessionId'],
-            'Token': source['OpenToken']
-        }
-        info = TheVoid('GetLiveStream', params).get()
+        info = self.api_client.get_live_stream(self.item['Id'], self.info['PlaySessionId'], source['OpenToken'], self.get_device_profile())
         LOG.info(info)
 
         if info['MediaSource'].get('RequiresClosing'):
@@ -241,15 +229,22 @@ class PlayUtils(object):
 
         if self.item['MediaType'] == 'Video':
             base, params = source['TranscodingUrl'].split('?')
+            url_parsed = params.split('&')
+            manual_tracks = ''
+
+            # manual bitrate
+            url_parsed = [p for p in url_parsed if 'AudioBitrate' not in p and 'VideoBitrate' not in p]
 
             if settings('skipDialogTranscode') != "3" and source.get('MediaStreams'):
-                url_parsed = params.split('&')
+                # manual tracks
+                url_parsed = [p for p in url_parsed if 'AudioStreamIndex' not in p and 'SubtitleStreamIndex' not in p]
+                manual_tracks = self.get_audio_subs(source, audio, subtitle)
 
-                for i in url_parsed:
-                    if 'AudioStreamIndex' in i or 'AudioBitrate' in i or 'SubtitleStreamIndex' in i:  # handle manually
-                        url_parsed.remove(i)
+            audio_bitrate = self.get_transcoding_audio_bitrate()
+            video_bitrate = self.get_max_bitrate() - audio_bitrate
 
-                params = "%s%s" % ('&'.join(url_parsed), self.get_audio_subs(source, audio, subtitle))
+            params = "%s%s" % ('&'.join(url_parsed), manual_tracks)
+            params += "&VideoBitrate=%s&AudioBitrate=%s" % (video_bitrate, audio_bitrate)
 
             video_type = 'live' if source['Protocol'] == 'LiveTV' else 'master'
             base = base.replace('stream' if 'stream' in base else 'master', video_type, 1)
@@ -289,20 +284,64 @@ class PlayUtils(object):
 
         return self.info['Path']
 
-    def get_bitrate(self):
+    def get_max_bitrate(self):
 
         ''' Get the video quality based on add-on settings.
             Max bit rate supported by server: 2147483 (max signed 32bit integer)
         '''
-        bitrate = [664, 996, 1320, 2000, 3200,
-                   4700, 6200, 7700, 9200, 10700,
-                   12200, 13700, 15200, 16700, 18200,
-                   20000, 25000, 30000, 35000, 40000,
-                   100000, 1000000, 2147483]
-        return bitrate[int(settings('videoBitrate') or 22)]
+        bitrate = [500, 1000, 1500, 2000, 2500, 3000, 4000, 5000, 6000,
+                   7000, 8000, 9000, 10000, 12000, 14000, 16000, 18000,
+                   20000, 25000, 30000, 35000, 40000, 100000, 1000000, 2147483]
+        return bitrate[int(settings('maxBitrate') or 24)] * 1000
 
     def get_resolution(self):
         return int(xbmc.getInfoLabel('System.ScreenWidth')), int(xbmc.getInfoLabel('System.ScreenHeight'))
+
+    def get_directplay_video_codec(self):
+        codecs = ['h264', 'hevc', 'h265', 'mpeg4', 'mpeg2video', 'vc1']
+
+        if settings('transcode_h265.bool'):
+            codecs.remove('hevc')
+            codecs.remove('h265')
+
+        if settings('transcode_mpeg2.bool'):
+            codecs.remove('mpeg2video')
+
+        if settings('transcode_vc1.bool'):
+            codecs.remove('vc1')
+
+        return ','.join(codecs)
+
+    def get_transcoding_video_codec(self):
+        codecs = ['h264', 'hevc', 'h265', 'mpeg4', 'mpeg2video', 'vc1']
+
+        if settings('transcode_h265.bool'):
+            codecs.remove('hevc')
+            codecs.remove('h265')
+        else:
+            if settings('videoPreferredCodec') == 'H265/HEVC':
+                codecs.insert(2, codecs.pop(codecs.index('h264')))
+
+        if settings('transcode_mpeg2.bool'):
+            codecs.remove('mpeg2video')
+
+        if settings('transcode_vc1.bool'):
+            codecs.remove('vc1')
+
+        return ','.join(codecs)
+
+    def get_transcoding_audio_codec(self):
+        codecs = ['aac', 'mp3', 'ac3', 'opus', 'flac', 'vorbis']
+
+        preferred = settings('audioPreferredCodec').lower()
+        if preferred in codecs:
+            codecs.insert(0, codecs.pop(codecs.index(preferred)))
+
+        return ','.join(codecs)
+
+    def get_transcoding_audio_bitrate(self):
+        bitrate = [96, 128, 160, 192, 256, 320, 384]
+        return bitrate[int(settings('audioBitrate') or 6)] * 1000
 
     def get_device_profile(self):
 
@@ -310,28 +349,29 @@ class PlayUtils(object):
         '''
         profile = {
             "Name": "Kodi",
-            "MaxStreamingBitrate": self.get_bitrate() * 1000,
+            "MaxStreamingBitrate": self.get_max_bitrate(),
             "MusicStreamingTranscodingBitrate": 1280000,
             "TimelineOffsetSeconds": 5,
             "TranscodingProfiles": [
                 {
+                    "Type": "Video",
+                    "Container": "m3u8",
+                    "AudioCodec": self.get_transcoding_audio_codec(),
+                    "VideoCodec": self.get_transcoding_video_codec(),
+                    "MaxAudioChannels": settings('audioMaxChannels')
+                },
+                {
                     "Type": "Audio"
                 },
                 {
-                    "Container": "m3u8",
-                    "Type": "Video",
-                    "AudioCodec": "aac,mp3,ac3,opus,flac,vorbis",
-                    "VideoCodec": "h264,mpeg4,mpeg2video",
-                    "MaxAudioChannels": "6"
-                },
-                {
-                    "Container": "jpeg",
-                    "Type": "Photo"
+                    "Type": "Photo",
+                    "Container": "jpeg"
                 }
             ],
             "DirectPlayProfiles": [
                 {
-                    "Type": "Video"
+                    "Type": "Video",
+                    "VideoCodec": self.get_directplay_video_codec()
                 },
                 {
                     "Type": "Audio"
@@ -410,16 +450,6 @@ class PlayUtils(object):
                 }
             ]
         }
-        if settings('transcode_h265.bool'):
-            profile['DirectPlayProfiles'][0]['VideoCodec'] = "h264,mpeg4,mpeg2video"
-        else:
-            profile['TranscodingProfiles'].insert(0, {
-                "Container": "m3u8",
-                "Type": "Video",
-                "AudioCodec": "aac,mp3,ac3,opus,flac,vorbis",
-                "VideoCodec": "h264,h265,hevc,mpeg4,mpeg2video",
-                "MaxAudioChannels": "6"
-            })
 
         if settings('transcodeHi10P.bool'):
             profile['CodecProfiles'].append(
@@ -467,15 +497,15 @@ class PlayUtils(object):
         mapping = {}
         kodi = 0
 
+        server_settings = self.api_client.get_transcode_settings()
+
         for stream in source['MediaStreams']:
+            if stream['SupportsExternalStream'] and stream['Type'] == 'Subtitle' and stream['DeliveryMethod'] == 'External':
+                if not stream['IsExternal'] and not server_settings['EnableSubtitleExtraction']:
+                    continue
 
-            if stream['Type'] == 'Subtitle' and stream['IsExternal']:
                 index = stream['Index']
-
-                if 'DeliveryUrl' in stream and stream['DeliveryUrl'].lower().startswith('/videos'):
-                    url = "%s/%s" % (self.info['ServerAddress'], stream['DeliveryUrl'])
-                else:
-                    url = self.get_subtitles(source, stream, index)
+                url = self.get_subtitles(source, stream, index)
 
                 if url is None:
                     continue
@@ -526,6 +556,23 @@ class PlayUtils(object):
 
         return path
 
+    def get_commercial_codec_name(self, codec, profile):
+        NAMES = {
+            'ac3': 'Dolby Digital',
+            'eac3': 'Dolby Digital+',
+            'truehd': 'Dolby TrueHD',
+            'dts': 'DTS'
+        }
+
+        if profile == 'DTS-HD MA':
+            return 'DTS-HD Master Audio'
+        if profile == 'DTS-HD HRA':
+            return 'DTS-HD High Resolution Audio'
+        if codec in NAMES:
+            return NAMES[codec]
+
+        return codec.upper()
+
     def get_audio_subs(self, source, audio=None, subtitle=None):
 
         ''' For transcoding only
@@ -539,6 +586,9 @@ class PlayUtils(object):
         subs_streams = collections.OrderedDict()
         streams = source['MediaStreams']
 
+        server_settings = self.api_client.get_transcode_settings()
+        allow_burned_subs = settings('allowBurnedSubs.bool')
+
         for stream in streams:
 
             index = stream['Index']
@@ -546,22 +596,32 @@ class PlayUtils(object):
 
             if stream_type == 'Audio':
 
-                codec = stream['Codec']
-                channel = stream.get('ChannelLayout', "")
+                profile = stream['Profile'] if 'Profile' in stream else None
+                codec = self.get_commercial_codec_name(stream['Codec'], profile)
+                channel = stream.get('ChannelLayout', "").capitalize()
 
                 if 'Language' in stream:
-                    track = "%s - %s - %s %s" % (index, stream['Language'], codec, channel)
+                    track = "%s - %s %s" % (stream['Language'].capitalize(), codec, channel)
                 else:
-                    track = "%s - %s %s" % (index, codec, channel)
+                    track = "%s %s" % (codec, channel)
 
                 audio_streams[track] = index
 
             elif stream_type == 'Subtitle':
+                if stream['IsExternal']:
+                    if not stream['SupportsExternalStream'] and not allow_burned_subs:
+                        continue
+                else:
+                    avail_for_extraction = stream['SupportsExternalStream'] and server_settings['EnableSubtitleExtraction']
+                    if not avail_for_extraction and not allow_burned_subs:
+                        continue
+
+                codec = self.get_commercial_codec_name(stream['Codec'], None)
 
                 if 'Language' in stream:
-                    track = "%s - %s" % (index, stream['Language'])
+                    track = "%s - %s" % (stream['Language'].capitalize(), codec)
                 else:
-                    track = "%s - %s" % (index, stream['Codec'])
+                    track = "%s" % codec
 
                 if stream['IsDefault']:
                     track = "%s - Default" % track
@@ -589,20 +649,19 @@ class PlayUtils(object):
 
         self.info['AudioStreamIndex'] = audio_selected
         prefs += "&AudioStreamIndex=%s" % audio_selected
-        prefs += "&AudioBitrate=384000" if streams[audio_selected].get('Channels', 0) > 2 else "&AudioBitrate=192000"
 
         if subtitle:
 
             index = subtitle
-            server_settings = TheVoid('GetTranscodeOptions', {'ServerId': self.info['ServerId']}).get()
+            server_settings = self.api_client.get_transcode_settings()
             stream = streams[index]
 
             if server_settings['EnableSubtitleExtraction'] and stream['SupportsExternalStream']:
                 self.info['SubtitleUrl'] = self.get_subtitles(source, stream, index)
-            else:
+                self.info['SubtitleStreamIndex'] = index
+            elif allow_burned_subs:
                 prefs += "&SubtitleStreamIndex=%s" % index
-
-            self.info['SubtitleStreamIndex'] = index
+                self.info['SubtitleStreamIndex'] = index
 
         elif skip_dialog in (0, 2) and len(subs_streams):
 
@@ -614,15 +673,15 @@ class PlayUtils(object):
 
                 if index is not None:
 
-                    server_settings = TheVoid('GetTranscodeOptions', {'ServerId': self.info['ServerId']}).get()
+                    server_settings = self.api_client.get_transcode_settings()
                     stream = streams[index]
 
                     if server_settings['EnableSubtitleExtraction'] and stream['SupportsExternalStream']:
                         self.info['SubtitleUrl'] = self.get_subtitles(source, stream, index)
-                    else:
+                        self.info['SubtitleStreamIndex'] = index
+                    elif allow_burned_subs:
                         prefs += "&SubtitleStreamIndex=%s" % index
-
-                self.info['SubtitleStreamIndex'] = index
+                        self.info['SubtitleStreamIndex'] = index
 
         return prefs
 

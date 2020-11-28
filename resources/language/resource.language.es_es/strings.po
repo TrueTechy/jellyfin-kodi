@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Jellyfin for Kodi\n"
 "POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"PO-Revision-Date: 2020-08-12 18:49+0000\n"
-"Last-Translator: Sinetiqueta <sinetiqueta.com@gmail.com>\n"
+"PO-Revision-Date: 2020-11-21 19:13+0000\n"
+"Last-Translator: Sojo <sendoasojo@gmail.com>\n"
 "Language-Team: Spanish <https://translate.jellyfin.org/projects/jellyfin/"
 "jellyfin-kodi/es/>\n"
 "Language: es_es\n"
@@ -47,7 +47,7 @@ msgstr "Nombre del dispositivo"
 
 msgctxt "#30022"
 msgid "Advanced"
-msgstr "Avanzados"
+msgstr "Avanzado"
 
 msgctxt "#30024"
 msgid "Username"
@@ -57,7 +57,6 @@ msgctxt "#30091"
 msgid "Confirm file deletion"
 msgstr "Confirmar borrado de archivo"
 
-#, fuzzy
 msgctxt "#30114"
 msgid "Offer delete after playback"
 msgstr "Ofrecer eliminar tras reproducir"
@@ -200,7 +199,7 @@ msgstr "Añadir a favoritos"
 
 msgctxt "#30406"
 msgid "Remove from favorites"
-msgstr "Quitar de favoritos"
+msgstr "Eliminar de favoritos"
 
 msgctxt "#30408"
 msgid "Settings"
@@ -966,3 +965,43 @@ msgstr "Seleccione las bibliotecas para actualizar"
 msgctxt "#33161"
 msgid "Update password"
 msgstr "Actualizar contraseña"
+
+msgctxt "#33201"
+msgid "Max artwork resolution"
+msgstr "Resolución máxima de carátulas"
+
+msgctxt "#33115"
+msgid "Transcode options"
+msgstr "Opciones de transcodificación"
+
+msgctxt "#30524"
+msgid "Transcode VC-1"
+msgstr "Transcodificar VC-1"
+
+msgctxt "#30523"
+msgid "Transcode MPEG2"
+msgstr "Transcodificar MPEG2"
+
+msgctxt "#30164"
+msgid "Audio max channels"
+msgstr "Límite de canales de audio"
+
+msgctxt "#30163"
+msgid "Audio bitrate"
+msgstr "Tasa de bits de audio"
+
+msgctxt "#30162"
+msgid "Preferred audio codec"
+msgstr "Codec de audio preferido"
+
+msgctxt "#30161"
+msgid "Preferred video codec"
+msgstr "Codec de video preferido"
+
+msgctxt "#30160"
+msgid "Max stream bitrate"
+msgstr "Tasa de bits máxima"
+
+msgctxt "#30165"
+msgid "Allow burned subtitles"
+msgstr "Permitir subtítulos permanentes"

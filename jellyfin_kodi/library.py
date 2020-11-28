@@ -16,7 +16,7 @@ from full_sync import FullSync
 from views import Views
 from downloader import GetItemWorker
 from helper import translate, api, stop, settings, window, dialog, event
-from helper.utils import split_list, set_screensaver, get_screensaver, find_library
+from helper.utils import split_list, set_screensaver, get_screensaver
 from helper.exceptions import LibraryException
 from jellyfin import Jellyfin
 from helper import LazyLogger
@@ -376,7 +376,7 @@ class Library(threading.Thread):
         include = []
         filters = ["tvshows", "boxsets", "musicvideos", "music", "movies"]
         sync = get_sync()
-        whitelist = [ x.replace('Mixed:', "") for x in sync['Whitelist'] ]
+        whitelist = [x.replace('Mixed:', "") for x in sync['Whitelist']]
         LOG.info("--[ retrieve changes ] %s", last_sync)
 
         # Get the item type of each synced library and build list of types to request
@@ -395,7 +395,7 @@ class Library(threading.Thread):
 
         try:
             # Get list of updates from server for synced library types and populate work queues
-            result = self.server.jellyfin.get_sync_queue(last_sync, ",".join([ x for x in query_filter ]))
+            result = self.server.jellyfin.get_sync_queue(last_sync, ",".join([x for x in query_filter]))
 
             if result is None:
                 return True
@@ -605,39 +605,37 @@ class UpdateWorker(threading.Thread):
                 except Queue.Empty:
                     break
 
-                # Verify that the updated item is in our local whitelist
-                library = find_library(self.server, item)
-                if library:
-                    default_args = (self.server, jellyfindb, kodidb, self.direct_path, library)
-                    try:
-                        if item['Type'] == 'Movie':
-                            Movies(*default_args).movie(item)
-                        elif item['Type'] == 'BoxSet':
-                            Movies(*default_args).boxset(item)
-                        elif item['Type'] == 'Series':
-                            TVShows(*default_args).tvshow(item)
-                        elif item['Type'] == 'Season':
-                            TVShows(*default_args).season(item)
-                        elif item['Type'] == 'Episode':
-                            TVShows(*default_args).episode(item)
-                        elif item['Type'] == 'MusicVideo':
-                            MusicVideos(*default_args).musicvideo(item)
-                        elif item['Type'] == 'MusicAlbum':
-                            Music(*default_args).album(item)
-                        elif item['Type'] == 'MusicArtist':
-                            Music(*default_args).artist(item)
-                        elif item['Type'] == 'AlbumArtist':
-                            Music(*default_args).albumartist(item)
-                        elif item['Type'] == 'Audio':
-                            Music(*default_args).song(item)
+                default_args = (self.server, jellyfindb, kodidb, self.direct_path)
+                try:
+                    LOG.debug('{} - {}'.format(item['Type'], item['Name']))
+                    if item['Type'] == 'Movie':
+                        Movies(*default_args).movie(item)
+                    elif item['Type'] == 'BoxSet':
+                        Movies(*default_args).boxset(item)
+                    elif item['Type'] == 'Series':
+                        TVShows(*default_args).tvshow(item)
+                    elif item['Type'] == 'Season':
+                        TVShows(*default_args).season(item)
+                    elif item['Type'] == 'Episode':
+                        TVShows(*default_args).episode(item)
+                    elif item['Type'] == 'MusicVideo':
+                        MusicVideos(*default_args).musicvideo(item)
+                    elif item['Type'] == 'MusicAlbum':
+                        Music(*default_args).album(item)
+                    elif item['Type'] == 'MusicArtist':
+                        Music(*default_args).artist(item)
+                    elif item['Type'] == 'AlbumArtist':
+                        Music(*default_args).albumartist(item)
+                    elif item['Type'] == 'Audio':
+                        Music(*default_args).song(item)
 
-                        if self.notify:
-                            self.notify_output.put((item['Type'], api.API(item).get_naming()))
-                    except LibraryException as error:
-                        if error.status == 'StopCalled':
-                            break
-                    except Exception as error:
-                        LOG.exception(error)
+                    if self.notify:
+                        self.notify_output.put((item['Type'], api.API(item).get_naming()))
+                except LibraryException as error:
+                    if error.status == 'StopCalled':
+                        break
+                except Exception as error:
+                    LOG.exception(error)
 
                 self.queue.task_done()
 
@@ -672,28 +670,25 @@ class UserDataWorker(threading.Thread):
                 except Queue.Empty:
                     break
 
-                # Verify that the updated item is in our local whitelist
-                library = find_library(self.server, item)
-                if library:
-                    default_args = (self.server, jellyfindb, kodidb, self.direct_path, library)
-                    try:
-                        if item['Type'] == 'Movie':
-                            Movies(*default_args).userdata(item)
-                        elif item['Type'] in ['Series', 'Season', 'Episode']:
-                            TVShows(*default_args).userdata(item)
-                        elif item['Type'] == 'MusicAlbum':
-                            Music(*default_args).album(item)
-                        elif item['Type'] == 'MusicArtist':
-                            Music(*default_args).artist(item)
-                        elif item['Type'] == 'AlbumArtist':
-                            Music(*default_args).albumartist(item)
-                        elif item['Type'] == 'Audio':
-                            Music(*default_args).song(item)
-                    except LibraryException as error:
-                        if error.status == 'StopCalled':
-                            break
-                    except Exception as error:
-                        LOG.exception(error)
+                default_args = (self.server, jellyfindb, kodidb, self.direct_path)
+                try:
+                    if item['Type'] == 'Movie':
+                        Movies(*default_args).userdata(item)
+                    elif item['Type'] in ['Series', 'Season', 'Episode']:
+                        TVShows(*default_args).userdata(item)
+                    elif item['Type'] == 'MusicAlbum':
+                        Music(*default_args).album(item)
+                    elif item['Type'] == 'MusicArtist':
+                        Music(*default_args).artist(item)
+                    elif item['Type'] == 'AlbumArtist':
+                        Music(*default_args).albumartist(item)
+                    elif item['Type'] == 'Audio':
+                        Music(*default_args).userdata(item)
+                except LibraryException as error:
+                    if error.status == 'StopCalled':
+                        break
+                except Exception as error:
+                    LOG.exception(error)
 
                 self.queue.task_done()
 

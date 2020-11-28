@@ -4,7 +4,6 @@ from __future__ import division, absolute_import, print_function, unicode_litera
 #################################################################################################
 
 import os
-import shutil
 import xml.etree.ElementTree as etree
 
 from six.moves.urllib.parse import urlencode
@@ -104,37 +103,6 @@ DYNNODES = {
 #################################################################################################
 
 
-def verify_kodi_defaults():
-
-    ''' Make sure we have the kodi default folder in place.
-    '''
-    node_path = xbmc.translatePath("special://profile/library/video")
-
-    if not os.path.exists(node_path):
-        try:
-            shutil.copytree(
-                src=xbmc.translatePath("special://xbmc/system/library/video"),
-                dst=xbmc.translatePath("special://profile/library/video"))
-        except Exception as error:
-            LOG.warning(error)
-            xbmcvfs.mkdir(node_path)
-
-    for index, node in enumerate(['movies', 'tvshows', 'musicvideos']):
-        file = os.path.join(node_path, node, "index.xml")
-
-        if xbmcvfs.exists(file):
-
-            xml = etree.parse(file).getroot()
-            xml.set('order', str(17 + index))
-            tree = etree.ElementTree(xml)
-            tree.write(file)
-
-    playlist_path = xbmc.translatePath("special://profile/playlists/video")
-
-    if not xbmcvfs.exists(playlist_path):
-        xbmcvfs.mkdirs(playlist_path)
-
-
 class Views(object):
 
     sync = None
@@ -167,6 +135,11 @@ class Views(object):
 
         try:
             libraries = self.server.jellyfin.get_media_folders()['Items']
+            library_ids = [x['Id'] for x in libraries]
+            for view in self.server.jellyfin.get_views()['Items']:
+                if view['Id'] not in library_ids:
+                    libraries.append(view)
+
         except Exception as error:
             LOG.exception(error)
             raise IndexError("Unable to retrieve libraries: %s" % error)
@@ -217,6 +190,10 @@ class Views(object):
         node_path = xbmc.translatePath("special://profile/library/video")
         playlist_path = xbmc.translatePath("special://profile/playlists/video")
         index = 0
+
+        # Kodi 19 doesn't seem to create this directory on it's own
+        if not os.path.isdir(node_path):
+            os.makedirs(node_path)
 
         with Database('jellyfin') as jellyfindb:
             db = jellyfin_db.JellyfinDatabase(jellyfindb.cursor)
